@@ -206,16 +206,16 @@ export default function MachineLearningPage({ history = [] }) {
   ]
 
   return (
-    <main style={styles.main}>
-      <section style={styles.heroShell}>
+    <main className="page-main ml-main" style={styles.main}>
+      <section className="ml-hero-shell" style={styles.heroShell}>
         <div>
           <div style={styles.kickerRow}>
             <span style={styles.kicker}>Machine Learning</span>
             <span style={styles.badge}>{sourceLabel}</span>
             {useImportedOnly && <span style={styles.badgeStrong}>Thesis-ready metrics</span>}
           </div>
-          <h1 style={styles.title}>Random Forest for pump decision support</h1>
-          <p style={styles.subtitle}>
+          <h1 className="page-title" style={styles.title}>Random Forest for pump decision support</h1>
+          <p className="page-subtitle" style={styles.subtitle}>
             Use this page to review model performance, import scikit-learn results, and explain which sensor signals drive irrigation decisions.
           </p>
         </div>
@@ -227,7 +227,7 @@ export default function MachineLearningPage({ history = [] }) {
         </div>
       </section>
 
-      <section style={styles.statsGrid}>
+      <section className="ml-stats-grid" style={styles.statsGrid}>
         {overviewKpis.map((item) => (
           <div key={item.label} style={item.highlight ? styles.kpiCardAccent : styles.kpiCard}>
             <div style={styles.kpiTopRow}>
@@ -242,8 +242,8 @@ export default function MachineLearningPage({ history = [] }) {
         ))}
       </section>
 
-      <div style={styles.workspaceGrid}>
-        <section style={styles.panel}>
+      <div className="ml-workspace-grid" style={styles.workspaceGrid}>
+        <section className="ml-panel" style={styles.panel}>
           <div style={styles.panelHeader}>
             <div>
               <h3 style={styles.panelTitle}>Experiment setup</h3>
@@ -270,7 +270,7 @@ export default function MachineLearningPage({ history = [] }) {
             <div style={styles.sliderHint}>Controls how much of each tree sees during bootstrap sampling.</div>
           </div>
 
-          <div style={styles.buttonRow}>
+          <div className="ml-button-row" style={styles.buttonRow}>
             <button onClick={handleTrain} style={styles.primaryBtn} disabled={useImportedOnly}>Train & Evaluate</button>
             <button onClick={() => {
               setModel(null);
@@ -297,7 +297,7 @@ export default function MachineLearningPage({ history = [] }) {
             </span>
           </label>
 
-          <div style={styles.splitCard}>
+          <div className="ml-split-card" style={styles.splitCard}>
             <div>
               <div style={styles.statLabel}>Train/Test split</div>
               <div style={styles.splitValue}>{Math.round(splitRatio * 100)}% / {Math.round((1 - splitRatio) * 100)}%</div>
@@ -305,7 +305,7 @@ export default function MachineLearningPage({ history = [] }) {
             <input className="ml-range" type="range" min={0.5} max={0.95} step={0.05} value={splitRatio} onChange={(e) => setSplitRatio(Number(e.target.value))} disabled={useImportedOnly} />
           </div>
 
-          <div style={styles.previewCard}>
+          <div className="ml-preview-card" style={styles.previewCard}>
             <div style={styles.previewHeader}>
               <div>
                 <h4 style={styles.previewTitle}>Dataset preview</h4>
@@ -341,7 +341,7 @@ export default function MachineLearningPage({ history = [] }) {
           </div>
         </section>
 
-        <section style={styles.panelResults}>
+        <section className="ml-panel" style={styles.panelResults}>
           <div style={styles.panelHeader}>
             <div>
               <h3 style={styles.panelTitle}>Model results</h3>
@@ -352,7 +352,7 @@ export default function MachineLearningPage({ history = [] }) {
 
           {modelReady ? (
             <>
-              <div style={styles.metricGrid}>
+              <div className="ml-metric-grid" style={styles.metricGrid}>
                 {modelKpis.map((item) => (
                   <div key={item.label} style={item.highlight ? styles.metricCardAccent : styles.metricCard}>
                     <div style={styles.kpiTopRow}>
@@ -367,7 +367,7 @@ export default function MachineLearningPage({ history = [] }) {
                 ))}
               </div>
 
-              <div style={styles.chartCard}>
+              <div className="ml-chart-card" style={styles.chartCard}>
                 <div style={styles.chartHeader}>
                   <div>
                     <h4 style={styles.chartTitle}>Feature importance</h4>
@@ -389,7 +389,7 @@ export default function MachineLearningPage({ history = [] }) {
               </div>
 
               {confMat && (
-                <div style={styles.matrixCard}>
+                <div className="ml-matrix-card" style={styles.matrixCard}>
                   <div style={styles.chartHeader}>
                     <div>
                       <h4 style={styles.chartTitle}>Confusion matrix</h4>
@@ -422,7 +422,7 @@ export default function MachineLearningPage({ history = [] }) {
               )}
             </>
           ) : (
-            <div style={styles.emptyState}>
+            <div className="ml-empty-state" style={styles.emptyState}>
               <div style={styles.emptyIcon}>RF</div>
               <h4 style={styles.emptyTitle}>No model loaded yet</h4>
               <p style={styles.emptyText}>

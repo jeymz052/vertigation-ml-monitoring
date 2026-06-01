@@ -7,11 +7,11 @@ export default function DashboardPage({ data, history, status }) {
 
   return (
     <div style={styles.page}>
-      <main style={styles.main}>
+      <main className="page-main dashboard-main" style={styles.main}>
         {/* Hero header */}
-        <div className="fade-up fade-up-1" style={styles.hero}>
-          <h1 style={styles.heroTitle}>Live Dashboard</h1>
-          <p style={styles.heroSub}>
+        <div className="fade-up fade-up-1 dashboard-hero" style={styles.hero}>
+          <h1 className="page-title" style={styles.heroTitle}>Live Dashboard</h1>
+          <p className="dashboard-subtitle" style={styles.heroSub}>
             3-tier vertical irrigation · ESP32 · Blynk Cloud
           </p>
         </div>

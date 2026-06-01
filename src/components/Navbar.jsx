@@ -11,12 +11,12 @@ export default function Navbar({ status, lastUpdate, activePage = 'dashboard', o
   }[status] ?? { color: '#64748b', text: 'Unknown' }
 
   return (
-    <nav style={styles.nav}>
+    <nav className="app-navbar" style={styles.nav}>
       <div style={styles.left}>
-        <img src={logo} alt="Vertigation logo" style={styles.logoImage} />
+        <img className="app-navbar__logo" src={logo} alt="Vertigation logo" style={styles.logoImage} />
       </div>
 
-      <div style={styles.links}>
+      <div className="app-navbar__links" style={styles.links}>
         {[
           { key: 'dashboard', label: 'Dashboard', icon: 'fa-solid fa-house' },
           { key: 'machineLearning', label: 'Machine Learning', icon: 'fa-solid fa-brain' },
@@ -31,6 +31,7 @@ export default function Navbar({ status, lastUpdate, activePage = 'dashboard', o
               ...styles.link,
               ...(activePage === item.key ? styles.linkActive : null),
             }}
+            className="app-navbar__link"
           >
             <i className={item.icon} aria-hidden="true" style={styles.linkIcon} />
             {item.label}
@@ -38,23 +39,23 @@ export default function Navbar({ status, lastUpdate, activePage = 'dashboard', o
         ))}
       </div>
 
-      <div style={styles.right}>
+      <div className="app-navbar__right" style={styles.right}>
         {/* Status badge */}
         <div style={styles.statusBadge}>
           <span style={{ ...styles.statusDot, background: statusConfig.color,
             animation: status === 'live' ? 'pulse-dot 1.5s ease infinite' : undefined }} />
-          <span style={{ fontSize: 12, color: statusConfig.color, fontFamily: "'DM Mono', monospace" }}>
+          <span className="app-navbar__status-text" style={{ fontSize: 12, color: statusConfig.color, fontFamily: "'DM Mono', monospace" }}>
             {statusConfig.text}
           </span>
         </div>
 
         {lastUpdate && (
-          <span style={styles.timestamp}>
+          <span className="app-navbar__timestamp" style={styles.timestamp}>
             Updated {lastUpdate.toLocaleTimeString('en-PH', { hour12: false })}
           </span>
         )}
 
-        <button onClick={logout} style={styles.logoutBtn}>
+        <button className="app-navbar__logout" onClick={logout} style={styles.logoutBtn}>
           Sign out
         </button>
       </div>

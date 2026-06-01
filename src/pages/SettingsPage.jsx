@@ -2,30 +2,30 @@ import SystemStatus from '../components/SystemStatus'
 
 export default function SettingsPage({ data }) {
   return (
-    <main style={styles.main}>
+    <main className="page-main" style={styles.main}>
       <section style={styles.hero}>
-        <h1 style={styles.title}>Settings</h1>
-        <p style={styles.subtitle}>Basic application preferences and system configuration placeholders.</p>
+        <h1 className="page-title" style={styles.title}>Settings</h1>
+        <p className="page-subtitle" style={styles.subtitle}>Basic application preferences and system configuration placeholders.</p>
       </section>
 
-      <div style={styles.grid}>
-        <article style={styles.card}>
+      <div className="settings-grid" style={styles.grid}>
+        <article className="settings-card" style={styles.card}>
           <h2 style={styles.cardTitle}>System Preferences</h2>
-          <div style={styles.row}>
+          <div className="settings-row" style={styles.row}>
             <span>Theme</span>
             <span style={styles.badge}>Green dashboard</span>
           </div>
-          <div style={styles.row}>
+          <div className="settings-row" style={styles.row}>
             <span>Default page</span>
             <span style={styles.badge}>Dashboard</span>
           </div>
-          <div style={styles.row}>
+          <div className="settings-row" style={styles.row}>
             <span>Navigation</span>
             <span style={styles.badge}>Header tabs</span>
           </div>
         </article>
 
-        <article style={styles.card}>
+        <article className="settings-card" style={styles.card}>
           <h2 style={styles.cardTitle}>Integration Notes</h2>
           <p style={styles.text}>
             This page can later hold alert thresholds, Blynk settings, Wi-Fi credentials, and user preferences.
@@ -37,7 +37,7 @@ export default function SettingsPage({ data }) {
       </div>
 
       <section style={{ marginTop: 18 }}>
-        <article style={styles.card}>
+        <article className="settings-card" style={styles.card}>
           <h2 style={styles.cardTitle}>System Status</h2>
           <SystemStatus data={data} />
         </article>

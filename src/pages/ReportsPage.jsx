@@ -1,27 +1,27 @@
 export default function ReportsPage() {
   return (
-    <main style={styles.main}>
+    <main className="page-main" style={styles.main}>
       <section style={styles.hero}>
         <p style={styles.kicker}>Reports</p>
-        <h1 style={styles.title}>System Reports</h1>
-        <p style={styles.subtitle}>
+        <h1 className="page-title" style={styles.title}>System Reports</h1>
+        <p className="page-subtitle" style={styles.subtitle}>
           Summary area for performance reports, moisture trends, and model evaluation results.
         </p>
       </section>
 
-      <div style={styles.grid}>
-        <article style={styles.card}>
+      <div className="reports-grid" style={styles.grid}>
+        <article className="reports-card" style={styles.card}>
           <h2 style={styles.cardTitle}>Moisture Summary</h2>
-          <div style={styles.reportRow}><span>Tier 1</span><strong>Stable</strong></div>
-          <div style={styles.reportRow}><span>Tier 2</span><strong>Needs review</strong></div>
-          <div style={styles.reportRow}><span>Tier 3</span><strong>Stable</strong></div>
+          <div className="reports-row" style={styles.reportRow}><span>Tier 1</span><strong>Stable</strong></div>
+          <div className="reports-row" style={styles.reportRow}><span>Tier 2</span><strong>Needs review</strong></div>
+          <div className="reports-row" style={styles.reportRow}><span>Tier 3</span><strong>Stable</strong></div>
         </article>
 
-        <article style={styles.card}>
+        <article className="reports-card" style={styles.card}>
           <h2 style={styles.cardTitle}>Model Evaluation</h2>
-          <div style={styles.reportRow}><span>Accuracy</span><strong>Pending</strong></div>
-          <div style={styles.reportRow}><span>Precision</span><strong>Pending</strong></div>
-          <div style={styles.reportRow}><span>Recall</span><strong>Pending</strong></div>
+          <div className="reports-row" style={styles.reportRow}><span>Accuracy</span><strong>Pending</strong></div>
+          <div className="reports-row" style={styles.reportRow}><span>Precision</span><strong>Pending</strong></div>
+          <div className="reports-row" style={styles.reportRow}><span>Recall</span><strong>Pending</strong></div>
         </article>
       </div>
     </main>

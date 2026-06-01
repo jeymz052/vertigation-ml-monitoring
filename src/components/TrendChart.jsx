@@ -33,7 +33,7 @@ export default function TrendChart({ history, fullPage = false }) {
   }))
 
   return (
-    <div className="fade-up fade-up-5" style={styles.card}>
+    <div className="chart-card fade-up fade-up-5" style={styles.card}>
       <div style={styles.header}>
         <span style={styles.title}><i className="fa-solid fa-chart-line" style={{ marginRight: 8 }} /> Moisture Trend</span>
         <span style={styles.meta}>Last {history.length} readings - updates every 2s</span>

@@ -8,14 +8,14 @@ function ProgressRow({ label, pct }) {
 
   return (
     <div style={{ ...styles.rowCard, borderLeftColor: colorVar }}>
-      <div style={styles.rowHeader}>
+      <div className="moisture-row-header" style={styles.rowHeader}>
         <div style={styles.labelGroup}>
           <div style={{ ...styles.labelIconWrap, background: bgTint, color: colorVar }}>
             <i className={iconClass} aria-hidden="true" style={styles.labelIcon} />
           </div>
           <div>
             <div style={styles.tierLabel}>{label}</div>
-            <div style={styles.tierMeta}>Moisture status for the current tier</div>
+            <div className="moisture-tier-meta" style={styles.tierMeta}>Moisture status for the current tier</div>
           </div>
         </div>
         <div style={{ ...styles.badge, background: colorVar, color: '#ffffff' }}>{pct}%</div>
@@ -33,7 +33,7 @@ export default function TierMoisture({ data }) {
   const t3 = typeof data.t3 === 'number' ? data.t3 : 0
 
   return (
-    <div className="fade-up fade-up-3" style={styles.card}>
+    <div className="moisture-card fade-up fade-up-3" style={styles.card}>
       <div style={styles.header}>
         <span style={styles.title}><i className="fa-solid fa-seedling" style={{ marginRight: 8 }} /> Soil Moisture — Per Tier</span>
       </div>

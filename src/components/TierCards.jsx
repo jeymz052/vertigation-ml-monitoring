@@ -12,7 +12,7 @@ export default function TierCards({ data }) {
   const [activeIndex, setActiveIndex] = useState(0)
 
   return (
-    <div style={styles.grid}>
+    <div className="tier-cards-grid" style={styles.grid}>
       {cards.map((c, i) => {
         const color = accentColors[i % accentColors.length]
         return (
@@ -28,9 +28,9 @@ export default function TierCards({ data }) {
               transform: activeIndex === i ? 'translateY(-1px)' : 'translateY(0)',
               boxShadow: activeIndex === i ? '0 12px 30px rgba(16,24,40,0.10)' : 'var(--shadow-sm)',
             }}
-            className={`fade-up fade-up-${i + 2}`}
+            className={`tier-card fade-up fade-up-${i + 2}`}
           >
-            <div style={styles.cardInner}>
+            <div className="tier-card-inner" style={styles.cardInner}>
               <div style={{ ...styles.topAccent, background: color, opacity: activeIndex === i ? 1 : 0.7 }} />
 
               <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -41,7 +41,7 @@ export default function TierCards({ data }) {
 
               <div style={{ textAlign: 'center', paddingTop: 8 }}>
                 <div style={styles.label}>{c.label}</div>
-                <div style={{ ...styles.value, color: 'var(--slate-900)' }}>{c.pct ?? '--'}%</div>
+                <div className="tier-card-value" style={{ ...styles.value, color: 'var(--slate-900)' }}>{c.pct ?? '--'}%</div>
               </div>
             </div>
           </div>

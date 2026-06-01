@@ -35,7 +35,7 @@ export default function EnvMetrics({ data }) {
   const [activeIndex, setActiveIndex] = useState(0)
 
   return (
-    <div style={styles.grid}>
+    <div className="env-metrics-grid" style={styles.grid}>
       {cards(data).map((c, i) => (
         <div
           key={c.label}
@@ -43,7 +43,7 @@ export default function EnvMetrics({ data }) {
           tabIndex={0}
           onClick={() => setActiveIndex(i)}
           onKeyDown={(e) => e.key === 'Enter' && setActiveIndex(i)}
-          className={`fade-up fade-up-${i + 2}`}
+          className={`env-card fade-up fade-up-${i + 2}`}
           style={{
             ...styles.card,
             borderColor: activeIndex === i ? `${c.color}30` : 'rgba(15,23,42,0.04)',
@@ -52,7 +52,7 @@ export default function EnvMetrics({ data }) {
           }}
         >
           <div style={{ ...styles.topAccent, background: c.color, opacity: activeIndex === i ? 1 : 0.7 }} />
-          <div style={styles.cardHead}>
+          <div className="env-card__head" style={styles.cardHead}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ ...styles.iconWrap, background: `${c.color}10`, color: c.color }}>
                 <i className={c.iconClass} aria-hidden="true" style={{ fontSize: 18 }} />
@@ -62,7 +62,7 @@ export default function EnvMetrics({ data }) {
                 <div style={{ ...styles.sub, color: 'var(--slate-500)' }}>{c.sub}</div>
               </div>
             </div>
-            <div style={styles.value}>{c.value}</div>
+            <div className="env-card__value" style={styles.value}>{c.value}</div>
           </div>
         </div>
       ))}
