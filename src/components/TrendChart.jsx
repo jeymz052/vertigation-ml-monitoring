@@ -36,7 +36,7 @@ export default function TrendChart({ history, fullPage = false }) {
     <div className="fade-up fade-up-5" style={styles.card}>
       <div style={styles.header}>
         <span style={styles.title}><i className="fa-solid fa-chart-line" style={{ marginRight: 8 }} /> Moisture Trend</span>
-        <span style={styles.meta}>Last {history.length} readings · updates every 2s</span>
+        <span style={styles.meta}>Last {history.length} readings - updates every 2s</span>
       </div>
 
       {history.length < 2 ? (
@@ -67,7 +67,6 @@ export default function TrendChart({ history, fullPage = false }) {
               wrapperStyle={{ fontSize: 12, color: '#94a3b8', paddingTop: 8 }}
               iconType="circle"
             />
-            {/* Threshold reference lines */}
             <ReferenceLine y={30} stroke="#f59e0b" strokeDasharray="4 4" strokeOpacity={0.5} />
             <ReferenceLine y={60} stroke="#3b82f6" strokeDasharray="4 4" strokeOpacity={0.5} />
 
