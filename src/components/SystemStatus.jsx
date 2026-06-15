@@ -32,7 +32,7 @@ export default function SystemStatus({ data }) {
         <div style={styles.col}>
           <p style={styles.colTitle}>Actuators</p>
           <StatusRow iconClass="fa-solid fa-water" label="Pump" active={data.pump === 1} activeText="Running" inactiveText="Off" activeColor="var(--green-400)" />
-          <StatusRow iconClass="fa-solid fa-toggle-on" label="Valve states" active={false} activeText="Not configured" inactiveText="Not configured" activeColor="var(--green-400)" />
+          <StatusRow iconClass="fa-solid fa-toggle-on" label="Control mode" active={data.mode === 1} activeText="Manual" inactiveText="Auto" activeColor="var(--amber-400)" />
         </div>
 
         <div style={styles.col}>

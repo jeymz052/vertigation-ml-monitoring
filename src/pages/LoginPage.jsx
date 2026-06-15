@@ -20,11 +20,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={styles.page}>
+    <div className="login-page" style={styles.page}>
       <div style={styles.grid} aria-hidden="true" />
 
-      <div style={{ ...styles.card, animation: shaking ? 'shake 0.4s ease' : undefined }}>
-        <form onSubmit={handleSubmit} style={styles.form}>
+      <div className="login-card" style={{ ...styles.card, animation: shaking ? 'shake 0.4s ease' : undefined }}>
+        <form className="login-form" onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.logoWrap}>
             <img src={logo} alt="Vertigation logo" style={styles.logoImage} />
           </div>
@@ -87,6 +87,33 @@ export default function LoginPage() {
         input::placeholder { color: rgba(255,255,255,0.88); opacity: 1; }
         button:hover { background: #27ae60 !important; transform: translateY(-1px); }
         button:active { transform: translateY(0); }
+        @media (max-width: 600px) {
+          .login-page {
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 0.75rem !important;
+            overflow-y: auto !important;
+            min-height: 100svh !important;
+          }
+          .login-card {
+            width: 100% !important;
+            max-width: 340px !important;
+            padding: 1.15rem 0.95rem !important;
+            border-radius: 16px !important;
+            margin: 0 auto !important;
+          }
+          .login-form {
+            gap: 10px !important;
+          }
+          .login-card img {
+            height: 58px !important;
+          }
+          .login-card .credit {
+            font-size: 9px !important;
+            line-height: 1.45 !important;
+            margin-top: 8px !important;
+          }
+        }
       `}</style>
     </div>
   )
@@ -94,15 +121,16 @@ export default function LoginPage() {
 
 const styles = {
   page: {
-    minHeight: '100vh',
+    minHeight: '100svh',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    padding: '1rem',
     background: `linear-gradient(rgba(3,7,18,0.36), rgba(3,7,18,0.36)), url(${bg})`,
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     position: 'relative',
-    overflow: 'hidden',
+    overflow: 'auto',
     fontFamily: "'Outfit', sans-serif",
   },
   grid: {
@@ -124,7 +152,7 @@ const styles = {
     backdropFilter: 'blur(6px)',
     border: '1px solid rgba(255,255,255,0.12)',
     borderRadius: 20,
-    padding: '2.5rem 2rem',
+    padding: '2rem 2rem',
     width: '100%',
     maxWidth: 460,
     boxShadow: '0 14px 40px rgba(2,6,23,0.45)',

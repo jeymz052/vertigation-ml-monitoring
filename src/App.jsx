@@ -23,7 +23,7 @@ function AuthenticatedShell({ page, setPage }) {
   const pageContent = {
     dashboard: <DashboardPage {...sensorState} />,
     machineLearning: <MachineLearningPage {...sensorState} />,
-    reports: <ReportsPage />,
+    reports: <ReportsPage {...sensorState} />,
     settings: <SettingsPage {...sensorState} />,
   }[page] ?? <DashboardPage {...sensorState} />
 

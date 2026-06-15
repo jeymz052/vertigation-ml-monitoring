@@ -83,8 +83,8 @@ img, svg, canvas, video {
 
 @media (max-width: 900px) {
   .app-navbar {
-    grid-template-columns: 1fr !important;
-    justify-items: center !important;
+    grid-template-columns: 1fr auto !important;
+    justify-items: stretch !important;
     padding: 0.75rem 1rem !important;
     gap: 10px !important;
   }
@@ -94,12 +94,7 @@ img, svg, canvas, video {
   }
 
   .app-navbar__links {
-    width: 100% !important;
-    justify-content: flex-start !important;
-    overflow-x: auto !important;
-    flex-wrap: nowrap !important;
-    padding: 2px 2px 8px !important;
-    scrollbar-width: none;
+    display: none !important;
   }
 
   .app-navbar__links::-webkit-scrollbar {
@@ -113,8 +108,16 @@ img, svg, canvas, video {
 
   .app-navbar__right {
     width: 100% !important;
-    justify-content: center !important;
+    justify-content: flex-end !important;
     gap: 8px !important;
+  }
+
+  .app-navbar__menuToggle {
+    display: inline-flex !important;
+  }
+
+  .app-navbar__logout--desktop {
+    display: none !important;
   }
 
   .page-main {
@@ -145,6 +148,23 @@ img, svg, canvas, video {
   .settings-grid {
     grid-template-columns: minmax(0, 1fr) !important;
     gap: 12px !important;
+  }
+
+  .settings-hero {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .settings-flow-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .settings-card {
+    padding: 1rem !important;
+    border-radius: 16px !important;
+  }
+
+  .settings-main .page-title {
+    font-size: 28px !important;
   }
 
   .ml-hero-shell {
@@ -227,7 +247,7 @@ img, svg, canvas, video {
   }
 
   .app-navbar__right {
-    justify-content: space-between !important;
+    justify-content: flex-end !important;
   }
 
   .app-navbar__timestamp {
@@ -295,6 +315,21 @@ img, svg, canvas, video {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 
+  .ml-hero-shell {
+    flex-direction: column !important;
+    padding: 0.9rem !important;
+    gap: 12px !important;
+  }
+
+  .ml-hero-shell > * {
+    min-width: 0 !important;
+  }
+
+  .ml-hero-shell > div:last-child {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
   .ml-button-row {
     flex-direction: column !important;
   }
@@ -306,5 +341,18 @@ img, svg, canvas, video {
   .ml-split-card {
     align-items: stretch !important;
     flex-direction: column !important;
+  }
+
+  .settings-quick-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .settings-stream-row {
+    grid-template-columns: 1fr !important;
+    gap: 4px !important;
+  }
+
+  .settings-stream-type {
+    text-align: left !important;
   }
 }

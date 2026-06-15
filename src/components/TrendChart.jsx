@@ -4,7 +4,9 @@ import {
 } from 'recharts'
 
 function fmt(date) {
-  return date.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  const value = date instanceof Date ? date : new Date(date)
+  if (Number.isNaN(value.getTime())) return '--:--:--'
+  return value.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
 }
 
 const CustomTooltip = ({ active, payload, label }) => {
