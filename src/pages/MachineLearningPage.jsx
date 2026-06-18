@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { trainRandomForest, predictRF, accuracyScore, confusionMatrix } from '../lib/randomForest'
 import {
   trainDecisionTree,
@@ -6,24 +6,80 @@ import {
   trainLogisticRegression,
   predictLogisticRegression,
 } from '../lib/mlModels'
-import { saveTrainedModelSnapshot } from '../lib/mlAdvisor'
+import { clearStoredModelData, loadTrainingRuns, loadTrainedModelSnapshot, saveTrainingRun, saveTrainedModelSnapshot } from '../lib/mlAdvisor'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, CartesianGrid } from 'recharts'
 
-const FEATURE_NAMES = ['t1', 't2', 't3', 'temp', 'humidity', 'lux', 'tank']
+const FEATURE_NAMES = ['t1', 't2', 't3', 'avg moisture', 'imbalance', 'temp', 'humidity', 'lux', 'tank', 'pump', 'hour sin', 'hour cos']
 const CLASS_ORDER = ['dry', 'ok', 'wet']
 const TRAIN_FOLDS = 5
 const TRAIN_ESTIMATORS = 50
 const TRAIN_SAMPLE_RATIO = 0.9
+const FORECAST_SAMPLE_INTERVAL_SECONDS = 1
+const MIN_FORECAST_TRAIN_ROWS = 120
 const MODEL_OPTIONS = [
   { key: 'random_forest', label: 'Random Forest', short: 'RF' },
   { key: 'decision_tree', label: 'Decision Tree', short: 'DT' },
   { key: 'logistic_regression', label: 'Logistic Regression', short: 'LR' },
+]
+const FORECAST_OPTIONS = [
+  { key: '5m', label: '5 minutes', minutes: 5 },
+  { key: '10m', label: '10 minutes', minutes: 10 },
+  { key: '20m', label: '20 minutes', minutes: 20 },
+  { key: '30m', label: '30 minutes', minutes: 30 },
 ]
 
 function deriveLabel(avg) {
   if (avg <= 30) return 'dry'
   if (avg >= 60) return 'wet'
   return 'ok'
+}
+
+function horizonToSteps(minutes) {
+  return Math.max(1, Math.round((minutes * 60) / FORECAST_SAMPLE_INTERVAL_SECONDS))
+}
+
+function toValidDate(value) {
+  const date = value instanceof Date ? value : new Date(value || Date.now())
+  return Number.isNaN(date.getTime()) ? new Date() : date
+}
+
+function buildFeatureVectorFromRow(row) {
+  const t1 = Number(row?.t1) || 0
+  const t2 = Number(row?.t2) || 0
+  const t3 = Number(row?.t3) || 0
+  const temp = Number(row?.temp) || 0
+  const humidity = Number(row?.humidity) || 0
+  const lux = Number(row?.lux) || 0
+  const tank = Number(row?.tank) || 0
+  const pump = Number(row?.pump) || 0
+  const avgMoisture = (t1 + t2 + t3) / 3
+  const imbalance = Math.max(t1, t2, t3) - Math.min(t1, t2, t3)
+  const timestamp = toValidDate(row?.timestamp || row?.time)
+  const minutesOfDay = (timestamp.getHours() * 60) + timestamp.getMinutes()
+  const angle = (minutesOfDay / 1440) * Math.PI * 2
+  const hourSin = Math.sin(angle)
+  const hourCos = Math.cos(angle)
+
+  return {
+    features: [t1, t2, t3, avgMoisture, imbalance, temp, humidity, lux, tank, pump, hourSin, hourCos],
+    avgMoisture,
+    imbalance,
+    timestamp: timestamp.toISOString(),
+  }
+}
+
+function deriveForecastRowsFromRawHistory(rawHistory) {
+  if (!Array.isArray(rawHistory) || !rawHistory.length) return []
+
+  const buckets = new Map()
+  rawHistory.forEach((item) => {
+    const time = item?.time instanceof Date ? item.time : new Date(item?.time || Date.now())
+    if (Number.isNaN(time.getTime())) return
+    const bucket = Math.floor(time.getTime() / (FORECAST_SAMPLE_INTERVAL_SECONDS * 1000))
+    buckets.set(bucket, item)
+  })
+
+  return Array.from(buckets.values())
 }
 
 function csvEscape(value) {
@@ -43,31 +99,49 @@ function downloadFile(filename, content, type) {
   URL.revokeObjectURL(url)
 }
 
-function shuffle(array) {
-  const copy = array.slice()
-  for (let i = copy.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[copy[i], copy[j]] = [copy[j], copy[i]]
-  }
-  return copy
+function formatPreviewTimestamp(value) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleTimeString('en-PH', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
 }
 
-function buildStratifiedFolds(labels, k) {
-  const grouped = Object.fromEntries(CLASS_ORDER.map((label) => [label, []]))
+function formatPreviewValue(value) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return String(value ?? '')
+  if (Number.isInteger(numeric)) return String(numeric)
+  return numeric.toFixed(2)
+}
 
-  labels.forEach((label, index) => {
-    const key = CLASS_ORDER.includes(label) ? label : 'ok'
-    grouped[key].push(index)
-  })
+function buildTimeSeriesSplits(length, k) {
+  if (length < 2) return []
 
-  const folds = Array.from({ length: k }, () => [])
-  Object.values(grouped).forEach((indices) => {
-    shuffle(indices).forEach((index, i) => {
-      folds[i % k].push(index)
+  const splits = []
+  const baseTrainSize = Math.max(MIN_FORECAST_TRAIN_ROWS, Math.floor(length * 0.5))
+  const remaining = Math.max(1, length - baseTrainSize)
+  const testWindow = Math.max(1, Math.floor(remaining / k))
+
+  for (let foldIndex = 0; foldIndex < k; foldIndex += 1) {
+    const trainEnd = Math.min(length - 1, baseTrainSize + (foldIndex * testWindow))
+    const testStart = trainEnd
+    const testEnd = foldIndex === k - 1 ? length : Math.min(length, testStart + testWindow)
+
+    if (trainEnd <= 0 || testStart >= testEnd) continue
+
+    splits.push({
+      trainStart: 0,
+      trainEnd,
+      testStart,
+      testEnd,
     })
-  })
+  }
 
-  return folds
+  return splits
 }
 
 function majorityLabel(labels) {
@@ -106,29 +180,30 @@ function trainByModelKey(modelKey, X, y) {
   return { model, preds: predictRF(model, X), importance: model.importance }
 }
 
+function trainTierModelsByKey(modelKey, rows) {
+  if (!rows.length) return null
+
+  const X = rows.map((row) => row.features)
+  const tier1 = trainByModelKey(modelKey, X, rows.map((row) => row.targetTier1Label))?.model ?? null
+  const tier2 = trainByModelKey(modelKey, X, rows.map((row) => row.targetTier2Label))?.model ?? null
+  const tier3 = trainByModelKey(modelKey, X, rows.map((row) => row.targetTier3Label))?.model ?? null
+
+  return { t1: tier1, t2: tier2, t3: tier3 }
+}
+
 function evaluateModelByKey(modelKey, X, y) {
   if (!X.length) return null
 
   const k = Math.min(TRAIN_FOLDS, X.length)
-  const folds = buildStratifiedFolds(y, k)
+  const folds = buildTimeSeriesSplits(X.length, k)
   const oofPreds = new Array(y.length).fill(null)
 
   for (let foldIndex = 0; foldIndex < folds.length; foldIndex += 1) {
-    const testIdx = new Set(folds[foldIndex])
-    const trainX = []
-    const trainY = []
-    const testX = []
-    const testOrder = []
-
-    for (let i = 0; i < X.length; i += 1) {
-      if (testIdx.has(i)) {
-        testX.push(X[i])
-        testOrder.push(i)
-      } else {
-        trainX.push(X[i])
-        trainY.push(y[i])
-      }
-    }
+    const fold = folds[foldIndex]
+    const trainX = X.slice(fold.trainStart, fold.trainEnd)
+    const trainY = y.slice(fold.trainStart, fold.trainEnd)
+    const testX = X.slice(fold.testStart, fold.testEnd)
+    const testOrder = Array.from({ length: fold.testEnd - fold.testStart }, (_, index) => fold.testStart + index)
 
     if (!trainX.length || !testX.length) continue
 
@@ -157,89 +232,45 @@ function evaluateModelByKey(modelKey, X, y) {
     confusion,
     labels,
     importance: finalModel.importance,
+    validationType: 'Time-aware forward validation',
   }
 }
 
-function evaluateRandomForest(X, y) {
-  if (!X.length) {
-    return null
-  }
-
-  const k = Math.min(TRAIN_FOLDS, X.length)
-  const folds = buildStratifiedFolds(y, k)
-  const oofPreds = new Array(y.length).fill(null)
-
-  for (let foldIndex = 0; foldIndex < folds.length; foldIndex += 1) {
-    const testIdx = new Set(folds[foldIndex])
-    const trainX = []
-    const trainY = []
-    const testX = []
-    const testY = []
-    const testOrder = []
-
-    for (let i = 0; i < X.length; i += 1) {
-      if (testIdx.has(i)) {
-        testX.push(X[i])
-        testY.push(y[i])
-        testOrder.push(i)
-      } else {
-        trainX.push(X[i])
-        trainY.push(y[i])
-      }
-    }
-
-    if (!trainX.length || !testX.length) {
-      continue
-    }
-
-    const foldModel = trainRandomForest(trainX, trainY, {
-      nEstimators: TRAIN_ESTIMATORS,
-      sampleRatio: TRAIN_SAMPLE_RATIO,
-      maxDepth: 5,
-      minSamplesSplit: 3,
-      featureRatio: Math.sqrt(trainX[0]?.length || 0),
-    })
-    const foldPreds = predictRF(foldModel, testX)
-    foldPreds.forEach((pred, i) => {
-      oofPreds[testOrder[i]] = pred
-    })
-  }
-
-  const filledPreds = oofPreds.map((pred, i) => pred ?? majorityLabel(y))
-  const accuracy = accuracyScore(y, filledPreds)
-  const labels = Array.from(new Set([...CLASS_ORDER, ...y, ...filledPreds]))
-  const confMat = buildConfusionFromPredictions(labels, y, filledPreds)
-  const finalModel = trainRandomForest(X, y, {
-    nEstimators: TRAIN_ESTIMATORS,
-    sampleRatio: TRAIN_SAMPLE_RATIO,
-    maxDepth: 5,
-    minSamplesSplit: 3,
-    featureRatio: Math.sqrt(X[0]?.length || 0),
-  })
-
-  return {
-    model: finalModel,
-    accuracy,
-    predictions: filledPreds,
-    confusion: confMat,
-    labels,
-  }
-}
-
-export default function MachineLearningPage({ history = [], clearHistory }) {
-  const [selectedModel, setSelectedModel] = useState('random_forest')
-  const [model, setModel] = useState(null)
-  const [metrics, setMetrics] = useState(null)
+export default function MachineLearningPage({ history = [], forecastHistory = [], clearHistory }) {
+  const savedSnapshot = useMemo(() => loadTrainedModelSnapshot(), [])
+  const [selectedModel, setSelectedModel] = useState(savedSnapshot?.modelKey || 'random_forest')
+  const [selectedHorizon, setSelectedHorizon] = useState(savedSnapshot?.horizonKey || '10m')
+  const [model, setModel] = useState(savedSnapshot?.model ?? null)
+  const [metrics, setMetrics] = useState(savedSnapshot ? {
+    accuracy: savedSnapshot.accuracy ?? null,
+    baseline: savedSnapshot.baseline ?? null,
+    trainedOn: savedSnapshot.trainedOn ?? null,
+    testOn: savedSnapshot.trainedOn ?? null,
+    folds: savedSnapshot.folds ?? null,
+    estimators: savedSnapshot.modelKey === 'random_forest' ? TRAIN_ESTIMATORS : '—',
+    modelLabel: savedSnapshot.label ?? 'Model',
+    validationType: savedSnapshot.validationType ?? 'Time-aware forward validation',
+  } : null)
   const [confMat, setConfMat] = useState(null)
   const [comparison, setComparison] = useState(null)
   const [dialog, setDialog] = useState(null)
   const [csvRows, setCsvRows] = useState(null)
   const [uploadedFileName, setUploadedFileName] = useState('')
-  const [trainNote, setTrainNote] = useState('Ready to train')
+  const [trainNote, setTrainNote] = useState(
+    savedSnapshot
+      ? `Loaded saved ${savedSnapshot.label} forecast for ${savedSnapshot.horizonLabel || 'selected horizon'}`
+      : 'Ready to train'
+  )
+  const [trainingRuns, setTrainingRuns] = useState(() => loadTrainingRuns())
   const fileRef = useRef(null)
+  const hasAnySavedHistory = history.length > 0 || forecastHistory.length > 0 || trainingRuns.length > 0 || Boolean(savedSnapshot)
+
+  const sampledHistorySource = useMemo(() => {
+    return forecastHistory.length ? forecastHistory : deriveForecastRowsFromRawHistory(history)
+  }, [forecastHistory, history])
 
   const historyRows = useMemo(() => {
-    return history.map((h) => {
+    return sampledHistorySource.map((h) => {
       const t1 = Number(h.t1) || 0
       const t2 = Number(h.t2) || 0
       const t3 = Number(h.t3) || 0
@@ -248,12 +279,13 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
       const lux = Number.parseFloat(h.lux) || 0
       const tank = Number(h.tank) || 0
       const pump = Number(h.pump) || 0
-      const avg = (t1 + t2 + t3) / 3
+      const timestamp = h.time ? new Date(h.time).toISOString() : new Date().toISOString()
+      const engineered = buildFeatureVectorFromRow({ t1, t2, t3, temp, humidity, lux, tank, pump, timestamp })
 
       return {
-        timestamp: h.time ? new Date(h.time).toISOString() : new Date().toISOString(),
-        features: [t1, t2, t3, temp, humidity, lux, tank],
-        label: deriveLabel(avg),
+        timestamp,
+        features: engineered.features,
+        label: deriveLabel(engineered.avgMoisture),
         t1,
         t2,
         t3,
@@ -262,28 +294,86 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
         lux,
         tank,
         pump,
+        avgMoisture: engineered.avgMoisture,
+        imbalance: engineered.imbalance,
       }
     })
-  }, [history])
+  }, [sampledHistorySource])
 
   const activeRows = csvRows || historyRows
   const modelReady = Boolean(model)
   const dataSourceLabel = csvRows ? 'Uploaded CSV' : 'Saved sensor history'
-  const previewRows = (csvRows || historyRows).slice(-6).slice().reverse()
+  const forecastOptions = useMemo(() => {
+    return FORECAST_OPTIONS.map((option) => {
+      const steps = horizonToSteps(option.minutes)
+      const maxRows = Math.max(0, activeRows.length - steps)
+      const available = maxRows >= MIN_FORECAST_TRAIN_ROWS
+      const requiredRows = steps + MIN_FORECAST_TRAIN_ROWS
+      const missingRows = Math.max(0, requiredRows - activeRows.length)
+      return {
+        ...option,
+        steps,
+        available,
+        usableRows: maxRows,
+        requiredRows,
+        missingRows,
+      }
+    })
+  }, [activeRows.length])
+
+  const selectedForecastOption = forecastOptions.find((option) => option.key === selectedHorizon) ?? forecastOptions[0]
+  const firstAvailableForecast = forecastOptions.find((option) => option.available) ?? null
+
+  useEffect(() => {
+    if (selectedForecastOption?.available) return
+    if (!firstAvailableForecast) return
+    setSelectedHorizon(firstAvailableForecast.key)
+  }, [selectedForecastOption, firstAvailableForecast])
 
   const dataset = useMemo(() => {
-    const X = activeRows.map((row) => row.features)
-    const y = activeRows.map((row) => row.label)
-    return { X, y }
-  }, [activeRows])
+    const shift = selectedForecastOption.steps
+    if (activeRows.length <= shift) {
+      return { X: [], y: [], rows: [] }
+    }
+
+    const rows = activeRows.slice(0, activeRows.length - shift).map((row, index) => {
+      const futureRow = activeRows[index + shift]
+      return {
+        ...row,
+        targetLabel: futureRow.label,
+        targetTier1Label: deriveLabel(Number(futureRow.t1) || 0),
+        targetTier2Label: deriveLabel(Number(futureRow.t2) || 0),
+        targetTier3Label: deriveLabel(Number(futureRow.t3) || 0),
+        targetTimestamp: futureRow.timestamp,
+      }
+    })
+
+    return {
+      X: rows.map((row) => row.features),
+      y: rows.map((row) => row.targetLabel),
+      rows,
+    }
+  }, [activeRows, selectedForecastOption])
+
+  const previewRows = useMemo(() => {
+    if (dataset.rows.length) {
+      return dataset.rows.slice(0, 5)
+    }
+
+    return activeRows.slice(0, 5).map((row) => ({
+      ...row,
+      targetLabel: row.label,
+      targetTimestamp: row.timestamp,
+    }))
+  }, [activeRows, dataset.rows])
 
   const labelDistribution = useMemo(() => {
     const counts = { dry: 0, ok: 0, wet: 0 }
-    activeRows.forEach((row) => {
-      counts[row.label] = (counts[row.label] || 0) + 1
+    dataset.rows.forEach((row) => {
+      counts[row.targetLabel] = (counts[row.targetLabel] || 0) + 1
     })
     return CLASS_ORDER.map((label) => ({ label, value: counts[label] || 0 }))
-  }, [activeRows])
+  }, [dataset.rows])
 
   const modelImportance = useMemo(() => {
     if (!model?.importance) {
@@ -297,8 +387,8 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
   }, [model])
 
   function handleTrain() {
-    if (!dataset.X.length) {
-      alert('No sensor rows available. Wait for live data or upload a CSV.')
+    if (!selectedForecastOption.available || !dataset.X.length) {
+      alert(`Not enough rows to forecast ${selectedForecastOption.label}. Collect more data or choose a shorter horizon.`)
       return
     }
 
@@ -310,6 +400,7 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
 
     const baseline = accuracyScore(dataset.y, new Array(dataset.y.length).fill(majorityLabel(dataset.y)))
     const modelLabel = MODEL_OPTIONS.find((m) => m.key === selectedModel)?.label ?? 'Model'
+    const tierModels = trainTierModelsByKey(selectedModel, dataset.rows)
     setModel(result.model)
     setMetrics({
       accuracy: result.accuracy,
@@ -319,6 +410,7 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
       folds: Math.min(TRAIN_FOLDS, dataset.X.length),
       estimators: selectedModel === 'random_forest' ? TRAIN_ESTIMATORS : '—',
       modelLabel,
+      validationType: result.validationType,
     })
     setConfMat(result.confusion)
     setComparison(null)
@@ -326,19 +418,44 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
       modelKey: selectedModel,
       label: modelLabel,
       model: result.model,
+      tierModels,
       accuracy: result.accuracy,
       baseline,
       trainedOn: dataset.X.length,
       folds: Math.min(TRAIN_FOLDS, dataset.X.length),
+      horizonKey: selectedForecastOption.key,
+      horizonLabel: selectedForecastOption.label,
+      horizonMinutes: selectedForecastOption.minutes,
+      featureCount: FEATURE_NAMES.length,
+      featureNames: FEATURE_NAMES,
+      validationType: result.validationType,
       trainedAt: new Date().toISOString(),
     })
-    setTrainNote(`Trained ${modelLabel} on ${dataset.X.length} rows with ${Math.min(TRAIN_FOLDS, dataset.X.length)}-fold cross-validation`)
+    const run = {
+      modelKey: selectedModel,
+      label: modelLabel,
+      accuracy: result.accuracy,
+      baseline,
+      tierModels,
+      trainedOn: dataset.X.length,
+      folds: Math.min(TRAIN_FOLDS, dataset.X.length),
+      horizonKey: selectedForecastOption.key,
+      horizonLabel: selectedForecastOption.label,
+      horizonMinutes: selectedForecastOption.minutes,
+      featureCount: FEATURE_NAMES.length,
+      featureNames: FEATURE_NAMES,
+      validationType: result.validationType,
+      trainedAt: new Date().toISOString(),
+    }
+    saveTrainingRun(run)
+    setTrainingRuns(loadTrainingRuns())
+    setTrainNote(`Trained ${modelLabel} to forecast ${selectedForecastOption.label} ahead using ${dataset.X.length} rows with time-aware forward validation`)
     setDialog(null)
   }
 
   function handleCompareAll() {
-    if (!dataset.X.length) {
-      alert('No sensor rows available. Wait for live data or upload a CSV.')
+    if (!selectedForecastOption.available || !dataset.X.length) {
+      alert(`Not enough rows to forecast ${selectedForecastOption.label}. Collect more data or choose a shorter horizon.`)
       return
     }
 
@@ -351,6 +468,7 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
         confusion: evaluated?.confusion ?? null,
         model: evaluated?.model ?? null,
         importance: evaluated?.importance ?? [],
+        validationType: evaluated?.validationType ?? 'Time-aware forward validation',
       }
     })
 
@@ -358,6 +476,7 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
     setComparison(results)
     setSelectedModel(best?.key ?? selectedModel)
     if (best?.model) {
+      const tierModels = trainTierModelsByKey(best.key, dataset.rows)
       setModel(best.model)
       setMetrics({
         accuracy: best.accuracy,
@@ -367,19 +486,45 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
         folds: Math.min(TRAIN_FOLDS, dataset.X.length),
         estimators: best.key === 'random_forest' ? TRAIN_ESTIMATORS : '—',
         modelLabel: best.label,
+        validationType: best.validationType,
       })
       setConfMat(best.confusion)
       saveTrainedModelSnapshot({
         modelKey: best.key,
         label: best.label,
         model: best.model,
+        tierModels,
         accuracy: best.accuracy,
         baseline,
         trainedOn: dataset.X.length,
         folds: Math.min(TRAIN_FOLDS, dataset.X.length),
+        horizonKey: selectedForecastOption.key,
+        horizonLabel: selectedForecastOption.label,
+        horizonMinutes: selectedForecastOption.minutes,
+        featureCount: FEATURE_NAMES.length,
+        featureNames: FEATURE_NAMES,
+        validationType: best.validationType,
         trainedAt: new Date().toISOString(),
       })
-      setTrainNote(`Compared ${MODEL_OPTIONS.length} models. Best result: ${best.label}`)
+      const run = {
+        modelKey: best.key,
+        label: best.label,
+        accuracy: best.accuracy,
+        baseline,
+        tierModels,
+        trainedOn: dataset.X.length,
+        folds: Math.min(TRAIN_FOLDS, dataset.X.length),
+        horizonKey: selectedForecastOption.key,
+        horizonLabel: selectedForecastOption.label,
+        horizonMinutes: selectedForecastOption.minutes,
+        featureCount: FEATURE_NAMES.length,
+        featureNames: FEATURE_NAMES,
+        validationType: best.validationType,
+        trainedAt: new Date().toISOString(),
+      }
+      saveTrainingRun(run)
+      setTrainingRuns(loadTrainingRuns())
+      setTrainNote(`Compared ${MODEL_OPTIONS.length} models for ${selectedForecastOption.label} forecasting with time-aware forward validation. Best result: ${best.label}`)
     }
     setDialog(null)
   }
@@ -410,12 +555,13 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
         const lux = Number(map.lux) || 0
         const tank = Number(map.tank || 0)
         const pump = Number(map.pump || 0)
-        const avg = (t1 + t2 + t3) / 3
-        const label = map.label || map.target || deriveLabel(avg)
+        const timestamp = map.timestamp || new Date().toISOString()
+        const engineered = buildFeatureVectorFromRow({ t1, t2, t3, temp, humidity, lux, tank, pump, timestamp })
+        const label = map.label || map.target || deriveLabel(engineered.avgMoisture)
 
         return {
-          timestamp: map.timestamp || new Date().toISOString(),
-          features: [t1, t2, t3, temp, humidity, lux, tank],
+          timestamp,
+          features: engineered.features,
           label,
           t1,
           t2,
@@ -425,6 +571,8 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
           lux,
           tank,
           pump,
+          avgMoisture: engineered.avgMoisture,
+          imbalance: engineered.imbalance,
         }
       })
 
@@ -469,6 +617,7 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
   }
 
   function resetPage() {
+    clearStoredModelData()
     setModel(null)
     setMetrics(null)
     setConfMat(null)
@@ -476,6 +625,7 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
     setDialog(null)
     setCsvRows(null)
     setUploadedFileName('')
+    setTrainingRuns([])
     setTrainNote('Ready to train')
     try {
       if (fileRef.current) fileRef.current.value = ''
@@ -484,15 +634,18 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
 
   function clearSavedSensorHistory() {
     clearHistory?.()
+    clearStoredModelData()
+    setTrainingRuns([])
     resetPage()
   }
 
   function openTrainDialog() {
-    if (!dataset.X.length) {
+    if (!selectedForecastOption.available || !dataset.X.length) {
       setDialog({
         type: 'info',
-        title: 'No data yet',
-        message: 'Wait for live sensor readings or upload a CSV before training a model.',
+        title: 'Forecast horizon not ready',
+        message: `There are not enough rows yet to forecast ${selectedForecastOption.label}.`,
+        detail: 'Collect more live data or choose a shorter forecast horizon.',
         actionLabel: 'Close',
       })
       return
@@ -501,7 +654,7 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
     setDialog({
       type: 'confirm',
       title: `Train ${selectedModelOption.label}?`,
-      message: `This will train ${selectedModelOption.label} on ${dataset.X.length} rows using fixed 5-fold cross-validation.`,
+      message: `This will train ${selectedModelOption.label} to forecast the soil state ${selectedForecastOption.label} ahead using ${dataset.X.length} rows.`,
       detail: 'The result will replace the current single-model output and update the thesis visuals below.',
       actionLabel: 'Train now',
       onConfirm: handleTrain,
@@ -509,11 +662,12 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
   }
 
   function openCompareDialog() {
-    if (!dataset.X.length) {
+    if (!selectedForecastOption.available || !dataset.X.length) {
       setDialog({
         type: 'info',
-        title: 'No data yet',
-        message: 'Wait for live sensor readings or upload a CSV before comparing models.',
+        title: 'Forecast horizon not ready',
+        message: `There are not enough rows yet to forecast ${selectedForecastOption.label}.`,
+        detail: 'Collect more live data or choose a shorter forecast horizon.',
         actionLabel: 'Close',
       })
       return
@@ -522,15 +676,15 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
     setDialog({
       type: 'confirm',
       title: 'Compare all three models?',
-      message: 'This runs Random Forest, Decision Tree, and Logistic Regression on the same dataset and shows their accuracies side by side.',
-      detail: 'Use this to defend why one model is better suited for your thesis dataset.',
+      message: `This runs Random Forest, Decision Tree, and Logistic Regression on the same dataset to forecast ${selectedForecastOption.label} ahead.`,
+      detail: 'Use this to defend which model is best for future soil-state prediction.',
       actionLabel: 'Run comparison',
       onConfirm: handleCompareAll,
     })
   }
 
   function openClearDialog() {
-    if (!historyRows.length) {
+    if (!hasAnySavedHistory) {
       setDialog({
         type: 'info',
         title: 'No saved history',
@@ -543,31 +697,33 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
     setDialog({
       type: 'confirm',
       title: 'Clear saved sensor history?',
-      message: 'This removes all saved sensor readings from this browser and resets the ML page.',
-      detail: 'Use this when you want to start a fresh collection run for a new experiment.',
+      message: 'This removes the saved raw history, forecast history, trained forecasts, and training runs from this browser.',
+      detail: 'Use this when you want to fully reset the ML page for a fresh experiment.',
       actionLabel: 'Clear history',
       tone: 'danger',
       onConfirm: clearSavedSensorHistory,
     })
   }
 
-  const dataRowsCount = activeRows.length
+  const dataRowsCount = dataset.rows.length
+  const liveRowCount = historyRows.length
   const baselineText = metrics ? `${(metrics.baseline * 100).toFixed(2)}%` : '—'
   const accuracyText = metrics ? `${(metrics.accuracy * 100).toFixed(2)}%` : '—'
   const selectedModelOption = MODEL_OPTIONS.find((m) => m.key === selectedModel) ?? MODEL_OPTIONS[0]
   const activeModelLabel = metrics?.modelLabel ?? selectedModelOption.label
 
   const overviewCards = [
-    { label: 'Data source', value: dataSourceLabel, meta: uploadedFileName || `Live rows: ${historyRows.length}`, icon: 'fa-solid fa-database', tone: 'blue' },
-    { label: 'Rows', value: dataRowsCount, meta: 'Used for training and evaluation', icon: 'fa-solid fa-table-cells-large', tone: 'green' },
+    { label: 'Data source', value: dataSourceLabel, meta: uploadedFileName || `Saved live rows: ${liveRowCount}`, icon: 'fa-solid fa-database', tone: 'blue' },
+    { label: 'Forecast horizon', value: selectedForecastOption.label, meta: `Needs ${selectedForecastOption.requiredRows} rows total`, icon: 'fa-solid fa-hourglass-half', tone: 'green' },
+    { label: 'Live row counter', value: `${liveRowCount}`, meta: 'Adds about 1 row every second while the dashboard is open', icon: 'fa-solid fa-wave-square', tone: 'blue' },
     { label: 'Accuracy', value: accuracyText, meta: `Baseline ${baselineText}`, icon: 'fa-solid fa-bullseye', tone: 'amber' },
-    { label: 'Training', value: modelReady ? 'Complete' : 'Not trained', meta: trainNote, icon: 'fa-solid fa-brain', tone: 'slate' },
+    { label: 'Training', value: modelReady ? 'Complete' : 'Not trained', meta: metrics?.validationType || trainNote, icon: 'fa-solid fa-brain', tone: 'slate' },
   ]
 
   const modelCards = [
     { label: 'Model', value: activeModelLabel, meta: 'Currently trained model' },
     { label: 'Trees', value: model?.trees?.length ?? 'â€”', meta: selectedModel === 'random_forest' ? `Fixed ${TRAIN_ESTIMATORS} estimators` : 'Not applicable' },
-    { label: 'Folds', value: metrics?.folds ?? '—', meta: 'Cross-validation' },
+    { label: 'Folds', value: metrics?.folds ?? '—', meta: metrics?.validationType || 'Cross-validation' },
     { label: 'Train rows', value: metrics?.trainedOn ?? '—', meta: 'Dataset size' },
     { label: 'Test rows', value: metrics?.testOn ?? '—', meta: 'Evaluated rows' },
   ]
@@ -581,13 +737,13 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
             <span style={styles.badge}>{dataSourceLabel}</span>
             <span style={styles.badgeStrong}>Thesis workflow</span>
           </div>
-          <h1 className="page-title" style={styles.title}>Machine learning for irrigation decision support</h1>
+          <h1 className="page-title" style={styles.title}>Machine learning for future soil-state forecasting</h1>
           <p className="page-subtitle" style={styles.subtitle}>
-            This page is focused on the thesis essentials: use sensor history or CSV data, train one of three models, compare it with a baseline, and show clear evaluation visuals.
+            This page forecasts whether the soil will be dry, okay, or wet after a selected future horizon using the current sensor values and a 1-second sampled forecast history.
           </p>
           <div style={styles.heroPills}>
             <span style={styles.heroPill}><i className="fa-solid fa-circle-check" /> Live or CSV input</span>
-            <span style={styles.heroPill}><i className="fa-solid fa-circle-check" /> Fixed thesis model setup</span>
+            <span style={styles.heroPill}><i className="fa-solid fa-circle-check" /> Future horizon labels</span>
             <span style={styles.heroPill}><i className="fa-solid fa-circle-check" /> Accuracy, balance, importance</span>
           </div>
         </div>
@@ -595,11 +751,14 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
         <div style={styles.heroNote}>
           <div style={styles.heroNoteLabel}>Status</div>
           <div style={styles.heroNoteValue}>{modelReady ? `${accuracyText} accuracy` : 'No model trained yet'}</div>
-          <div style={styles.heroNoteMeta}>{dataRowsCount} rows available</div>
+          <div style={styles.heroNoteMeta}>
+            {dataRowsCount} usable rows for {selectedForecastOption.label} forecasting from {liveRowCount} saved live rows.
+            {' '}Needs {selectedForecastOption.requiredRows} total rows{selectedForecastOption.missingRows ? `, ${selectedForecastOption.missingRows} more needed` : ', ready to train'}.
+          </div>
         </div>
       </section>
 
-      <section className="ml-stats-grid" style={styles.grid4}>
+      <section className="ml-stats-grid" style={styles.grid4Small}>
         {overviewCards.map((item) => (
           <div key={item.label} style={styles.card}>
             <div style={{ ...styles.cardAccent, ...(item.tone === 'green' ? styles.cardAccentGreen : item.tone === 'amber' ? styles.cardAccentAmber : item.tone === 'slate' ? styles.cardAccentSlate : styles.cardAccentBlue) }} />
@@ -620,13 +779,50 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
           <div style={styles.panelHeader}>
             <div>
               <h3 style={styles.panelTitle}>Training and data</h3>
-              <p style={styles.panelText}>No extra sliders. The model trains using a fixed thesis-friendly setup so results are easier to defend and compare.</p>
+              <p style={styles.panelText}>Choose a forecast horizon first, then train one of the three models to predict the future soil state from the current sensor row using the 1-second sampled forecast dataset.</p>
             </div>
-            <div style={styles.panelPill}>{selectedModelOption.label} · 5-fold CV · 3 models</div>
+            <div style={styles.panelPill}>{selectedModelOption.label} · {selectedForecastOption.label} forecast · time-aware validation</div>
           </div>
 
           <div style={styles.modelHint}>
-            Select one model, or compare all three. RF is not the only option here.
+            Select a horizon, then choose one model or compare all three. Forecasting now uses engineered sensor features plus time-of-day signals, and evaluation uses time-aware forward validation to better match real forecasting.
+          </div>
+
+          <div style={styles.modelHint}>
+            Live row counter: <strong>{liveRowCount}</strong> saved rows. This should increase by about 1 every second while this website stays open and connected to Blynk.
+          </div>
+
+          <div style={styles.modelHint}>
+            Formula: <strong>required rows = forecast seconds + {MIN_FORECAST_TRAIN_ROWS} minimum training rows</strong>. For {selectedForecastOption.label}, that means <strong>{selectedForecastOption.requiredRows}</strong> total rows.
+          </div>
+
+          {!historyRows.length && modelReady && (
+            <div style={styles.modelHint}>
+              A saved trained model is loaded, but the current forecast dataset is still empty. Leave the dashboard open a bit longer so new sampled forecast rows can accumulate.
+            </div>
+          )}
+
+          <div style={styles.horizonPicker}>
+            {forecastOptions.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => setSelectedHorizon(option.key)}
+                disabled={!option.available}
+                style={{
+                  ...styles.horizonChip,
+                  ...(selectedHorizon === option.key ? styles.horizonChipActive : null),
+                  ...(!option.available ? styles.horizonChipDisabled : null),
+                }}
+              >
+                <span>{option.label}</span>
+                <small style={styles.horizonMeta}>
+                  {option.available
+                    ? `${option.usableRows} usable rows • ready`
+                    : `Needs ${option.requiredRows} rows • ${option.missingRows} more`}
+                </small>
+              </button>
+            ))}
           </div>
 
           <div style={styles.modelPicker}>
@@ -653,7 +849,7 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
             <button onClick={exportLiveCsv} style={styles.ghostBtn} disabled={!historyRows.length}>Export Sensor CSV</button>
             <button onClick={() => fileRef.current?.click()} style={styles.ghostBtn}>Upload CSV</button>
             <button onClick={exportModel} style={styles.secondaryBtn} disabled={!modelReady}>Export model</button>
-            <button onClick={openClearDialog} style={styles.dangerBtn} disabled={!historyRows.length}>Clear saved history</button>
+            <button onClick={openClearDialog} style={styles.dangerBtn} disabled={!hasAnySavedHistory}>Clear saved history</button>
             <input ref={fileRef} type="file" accept="text/csv" style={{ display: 'none' }} onChange={handleCsvUpload} />
           </div>
 
@@ -668,11 +864,15 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
             <div style={styles.sectionHead}>
               <div>
                 <h4 style={styles.sectionTitle}>Dataset preview</h4>
-                <p style={styles.sectionText}>This is the data used for training. The label is derived from the average soil moisture class.</p>
+                <p style={styles.sectionText}>
+                  {dataset.rows.length
+                    ? 'This is the data used for training. Each target label is taken from a future row at the selected forecast horizon.'
+                    : 'Forecast training is not ready yet, so this preview shows the first 5 collected sensor rows.'}
+                </p>
               </div>
             </div>
             <div style={styles.columnNote}>
-              Columns: <strong>#</strong>, <strong>t1</strong>, <strong>t2</strong>, <strong>t3</strong>, <strong>temp</strong>, <strong>humidity</strong>, <strong>lux</strong>, <strong>tank</strong>, <strong>label</strong>
+              Columns: <strong>#</strong>, <strong>current time</strong>, <strong>target time</strong>, <strong>{FEATURE_NAMES.join(', ')}</strong>, <strong>future label</strong>
             </div>
 
             <div style={styles.tableWrap}>
@@ -680,20 +880,26 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
                 <thead>
                   <tr>
                     <th style={styles.tableHeadIndex}>#</th>
+                    <th style={styles.tableHeadTime}>current time</th>
+                    <th style={styles.tableHeadTime}>target time</th>
                     {FEATURE_NAMES.map((name) => (
                       <th key={name} style={styles.tableHead}>{name}</th>
                     ))}
-                    <th style={styles.tableHeadLabel}>label</th>
+                    <th style={styles.tableHeadLabel}>future label</th>
                   </tr>
                 </thead>
                 <tbody>
                   {previewRows.map((row, idx) => (
                     <tr key={`${row.timestamp}-${idx}`}>
                       <td style={styles.tableIndex}>{idx + 1}</td>
+                      <td style={styles.tableTimeCell}>{formatPreviewTimestamp(row.timestamp)}</td>
+                      <td style={styles.tableTimeCell}>{formatPreviewTimestamp(row.targetTimestamp)}</td>
                       {row.features.map((value, j) => (
-                        <td key={j} style={styles.tableCell}>{value}</td>
+                        <td key={j} style={styles.tableCell} title={String(value)}>
+                          {formatPreviewValue(value)}
+                        </td>
                       ))}
-                      <td style={styles.tableLabelCell}><span style={styles.labelChip}>{row.label}</span></td>
+                      <td style={styles.tableLabelCell}><span style={styles.labelChip}>{row.targetLabel}</span></td>
                     </tr>
                   ))}
                 </tbody>
@@ -727,7 +933,7 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
                   <div style={styles.sectionHead}>
                     <div>
                       <h4 style={styles.sectionTitle}>Model comparison</h4>
-                      <p style={styles.sectionText}>Direct comparison of the three trained models on the same dataset and cross-validation setup.</p>
+                      <p style={styles.sectionText}>Direct comparison of the three trained models on the same dataset and the same time-aware forward validation setup.</p>
                     </div>
                   </div>
                   <div style={styles.comparisonNote}>
@@ -901,13 +1107,42 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
                   </div>
                 </div>
               )}
+
+              <div style={styles.trainingHistoryCard}>
+                <div style={styles.sectionHead}>
+                  <div>
+                    <h4 style={styles.sectionTitle}>Stored training runs</h4>
+                    <p style={styles.sectionText}>Saved locally in this browser. These remain available even if you clear the sensor history.</p>
+                  </div>
+                </div>
+                {trainingRuns.length ? (
+                  <div style={styles.trainingRunList}>
+                    {trainingRuns.map((run) => (
+                      <div key={run.id} style={styles.trainingRunItem}>
+                        <div style={styles.trainingRunTop}>
+                          <span style={styles.trainingRunName}>{run.label}</span>
+                          <span style={styles.trainingRunAccuracy}>{((run.accuracy || 0) * 100).toFixed(2)}%</span>
+                        </div>
+                        <div style={styles.trainingRunMeta}>
+                          Forecast: {run.horizonLabel || '-'} · Rows: {run.trainedOn || '-'} · Folds: {run.folds || '-'}
+                        </div>
+                        <div style={styles.trainingRunTime}>
+                          Trained at {formatPreviewTimestamp(run.trainedAt)} on {run.trainedAt ? new Date(run.trainedAt).toLocaleDateString('en-PH') : '-'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={styles.trainingRunEmpty}>No saved training runs yet.</div>
+                )}
+              </div>
             </>
           ) : (
               <div className="ml-empty-state" style={styles.emptyState}>
               <div style={styles.emptyIcon}>{selectedModelOption.short}</div>
               <h4 style={styles.emptyTitle}>No model trained yet</h4>
               <p style={styles.emptyText}>
-                Choose Random Forest, Decision Tree, or Logistic Regression, then train to generate the thesis visuals: baseline comparison, class balance, feature importance, and confusion matrix.
+                Choose a forecast horizon, then train Random Forest, Decision Tree, or Logistic Regression to predict the future soil state and generate the thesis visuals below.
               </p>
               <div className="ml-empty-model-picker" style={styles.emptyModelPicker}>
                 {MODEL_OPTIONS.map((option) => (
@@ -926,8 +1161,8 @@ export default function MachineLearningPage({ history = [], clearHistory }) {
                 ))}
               </div>
               <div className="ml-button-row" style={styles.emptyActions}>
-                <button onClick={handleTrain} style={styles.primaryBtn} disabled={!activeRows.length}>Train selected model</button>
-                <button onClick={handleCompareAll} style={styles.secondaryBtn} disabled={!activeRows.length}>Compare all models</button>
+                <button onClick={handleTrain} style={styles.primaryBtn} disabled={!dataset.X.length}>Train selected model</button>
+                <button onClick={handleCompareAll} style={styles.secondaryBtn} disabled={!dataset.X.length}>Compare all models</button>
                 <button onClick={() => fileRef.current?.click()} style={styles.ghostBtn}>Upload CSV</button>
               </div>
             </div>
@@ -1053,6 +1288,33 @@ const styles = {
   panelTitle: { fontSize: 17, fontWeight: 900, marginBottom: 4 },
   panelText: { fontSize: 13.5, color: 'var(--slate-600)', lineHeight: 1.6 },
   panelPill: { padding: '7px 10px', borderRadius: 999, fontSize: 12, fontWeight: 800, background: 'rgba(15,23,42,0.05)', color: 'var(--slate-700)', whiteSpace: 'nowrap' },
+  horizonPicker: { display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+  horizonChip: {
+    display: 'inline-flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 4,
+    padding: '10px 12px',
+    borderRadius: 14,
+    border: '1px solid rgba(15,23,42,0.08)',
+    background: 'white',
+    color: 'var(--slate-700)',
+    fontWeight: 800,
+    cursor: 'pointer',
+    minWidth: 124,
+  },
+  horizonChipActive: {
+    borderColor: 'rgba(59,130,246,0.22)',
+    boxShadow: '0 10px 18px rgba(59,130,246,0.10)',
+    color: '#1d4ed8',
+    background: 'rgba(59,130,246,0.06)',
+  },
+  horizonChipDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
+    background: 'rgba(248,250,252,0.95)',
+  },
+  horizonMeta: { fontSize: 11, fontWeight: 700, color: 'var(--slate-500)' },
   modelPicker: { display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
   modelHint: {
     marginBottom: 12,
@@ -1114,8 +1376,9 @@ const styles = {
     lineHeight: 1.5,
   },
   tableWrap: { maxHeight: 260, overflow: 'auto', borderTop: '1px solid rgba(15,23,42,0.05)', marginTop: 10 },
-  table: { width: '100%', minWidth: 760, borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed', fontSize: 13 },
+  table: { width: '100%', minWidth: 1420, borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed', fontSize: 13 },
   tableHead: {
+    minWidth: 88,
     padding: '10px 8px',
     textAlign: 'center',
     fontSize: 12,
@@ -1126,6 +1389,16 @@ const styles = {
   },
   tableHeadIndex: {
     width: 44,
+    padding: '10px 8px',
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: 900,
+    color: 'var(--slate-700)',
+    borderBottom: '1px solid rgba(15,23,42,0.08)',
+    whiteSpace: 'nowrap',
+  },
+  tableHeadTime: {
+    width: 92,
     padding: '10px 8px',
     textAlign: 'center',
     fontSize: 12,
@@ -1153,11 +1426,23 @@ const styles = {
     fontWeight: 700,
   },
   tableCell: {
+    minWidth: 88,
     padding: '10px 8px',
     textAlign: 'center',
     borderBottom: '1px solid rgba(15,23,42,0.04)',
     fontVariantNumeric: 'tabular-nums',
     whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  tableTimeCell: {
+    padding: '10px 8px',
+    textAlign: 'center',
+    borderBottom: '1px solid rgba(15,23,42,0.04)',
+    fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: 'var(--slate-600)',
   },
   tableLabelCell: {
     width: 90,
@@ -1183,6 +1468,15 @@ const styles = {
   matrixTable: { borderCollapse: 'collapse', width: '100%' },
   matrixHead: { padding: 8, background: 'rgba(15,23,42,0.04)', fontWeight: 700 },
   matrixCell: { padding: 10, textAlign: 'center', fontWeight: 700 },
+  trainingHistoryCard: { marginTop: 14, padding: '1rem', borderRadius: 16, border: '1px solid rgba(15,23,42,0.05)', background: 'white' },
+  trainingRunList: { display: 'grid', gap: 10 },
+  trainingRunItem: { padding: '0.95rem', borderRadius: 14, background: 'rgba(248,250,252,0.95)', border: '1px solid rgba(15,23,42,0.05)' },
+  trainingRunTop: { display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' },
+  trainingRunName: { fontSize: 14, fontWeight: 900, color: 'var(--slate-900)' },
+  trainingRunAccuracy: { fontSize: 16, fontWeight: 900, color: 'var(--green-700)' },
+  trainingRunMeta: { fontSize: 12, color: 'var(--slate-600)', lineHeight: 1.5 },
+  trainingRunTime: { marginTop: 4, fontSize: 12, color: 'var(--slate-500)', fontFamily: "'DM Mono', monospace" },
+  trainingRunEmpty: { padding: '0.95rem', borderRadius: 14, background: 'rgba(248,250,252,0.95)', color: 'var(--slate-500)', fontSize: 13 },
   emptyState: { textAlign: 'center', padding: '2.5rem 1.5rem', borderRadius: 18, background: 'linear-gradient(180deg, rgba(248,250,252,0.95), rgba(255,255,255,1))', border: '1px dashed rgba(34,197,94,0.18)' },
   emptyIcon: { width: 60, height: 60, borderRadius: 18, margin: '0 auto 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, color: 'white', background: 'linear-gradient(135deg, #16a34a, #22c55e)', boxShadow: '0 14px 24px rgba(34,197,94,0.22)' },
   emptyTitle: { fontSize: 18, fontWeight: 900, marginBottom: 8 },

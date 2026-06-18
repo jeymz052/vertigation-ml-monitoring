@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend } from 'recharts'
-import { buildIrrigationAdvisory, loadTrainedModelSnapshot, predictStoredModel } from '../lib/mlAdvisor'
+import { buildIrrigationAdvisory, loadTrainedModelSnapshot, predictStoredModel, predictStoredTierForecasts } from '../lib/mlAdvisor'
 
 function avg(values) {
   if (!values.length) return 0
@@ -9,6 +9,83 @@ function avg(values) {
 
 function fmtPct(value) {
   return `${Math.round(value)}%`
+}
+
+function tierPredictionTone(prediction) {
+  if (prediction === 'dry') return {
+    background: 'rgba(239,68,68,0.12)',
+    border: '1px solid rgba(239,68,68,0.18)',
+    color: '#b91c1c',
+  }
+
+  if (prediction === 'wet') return {
+    background: 'rgba(22,163,74,0.12)',
+    border: '1px solid rgba(22,163,74,0.18)',
+    color: '#166534',
+  }
+
+  if (prediction === 'ok') return {
+    background: 'rgba(245,158,11,0.14)',
+    border: '1px solid rgba(245,158,11,0.18)',
+    color: '#92400e',
+  }
+
+  return {
+    background: 'rgba(100,116,139,0.12)',
+    border: '1px solid rgba(100,116,139,0.16)',
+    color: '#334155',
+  }
+}
+
+function tierPredictionLabel(prediction) {
+  if (prediction === 'ok') return 'okay'
+  return prediction || 'n/a'
+}
+
+function buildTierSummary(snapshot, tierPredictions) {
+  if (!snapshot || !tierPredictions) return null
+
+  const horizonLabel = snapshot.horizonLabel || 'the selected horizon'
+  return {
+    title: `After ${horizonLabel}: T1 ${tierPredictionLabel(tierPredictions.t1)}, T2 ${tierPredictionLabel(tierPredictions.t2)}, T3 ${tierPredictionLabel(tierPredictions.t3)}`,
+    detail: `Per-tier forecast for ${horizonLabel}. This shows which tier is likely to become dry, remain okay, or stay wet based on the trained ${snapshot.label} model.`,
+  }
+}
+
+function normalizePrediction(prediction) {
+  return prediction === 'ok' ? 'okay' : prediction || 'n/a'
+}
+
+function tierRecommendation(prediction) {
+  if (prediction === 'dry') return 'Prepare watering soon'
+  if (prediction === 'ok') return 'Continue monitoring'
+  if (prediction === 'wet') return 'No action needed'
+  return 'No forecast available'
+}
+
+function tierReason(tierLabel, currentValue, prediction, trendLabel) {
+  if (prediction === 'dry') {
+    return `Predicted dry because ${tierLabel} is already low at ${Math.round(currentValue)}% and the recent trend is ${trendLabel.toLowerCase()}.`
+  }
+
+  if (prediction === 'wet') {
+    return `Predicted wet because ${tierLabel} is still high at ${Math.round(currentValue)}% and moisture remains sufficient.`
+  }
+
+  if (prediction === 'ok') {
+    return `Predicted okay because ${tierLabel} is still within the middle range at ${Math.round(currentValue)}% and no sharp drop is detected.`
+  }
+
+  return `No trained forecast is available yet for ${tierLabel}.`
+}
+
+function horizonKeyFromLabel(label) {
+  const text = String(label || '').toLowerCase()
+  if (text.includes('5 minute')) return '5m'
+  if (text.includes('10 minute')) return '10m'
+  if (text.includes('20 minute')) return '20m'
+  if (text.includes('30 minute')) return '30m'
+  return null
 }
 
 export default function DashboardInsights({ history, data }) {
@@ -77,10 +154,78 @@ export default function DashboardInsights({ history, data }) {
   const mlAdvisor = useMemo(() => {
     const snapshot = loadTrainedModelSnapshot()
     const prediction = snapshot && latestRow ? predictStoredModel(snapshot, latestRow) : null
+    const tierPredictions = snapshot && latestRow ? predictStoredTierForecasts(snapshot, latestRow) : null
     const advisory = buildIrrigationAdvisory(prediction, latestRow, snapshot)
+    const tierSummary = buildTierSummary(snapshot, tierPredictions)
 
-    return { snapshot, prediction, advisory }
+    return { snapshot, prediction, tierPredictions, advisory, tierSummary }
   }, [latestRow, history.length, data?.t1, data?.t2, data?.t3, data?.temp, data?.humidity, data?.lux, data?.tank, data?.pump])
+
+  const tierForecastCards = useMemo(() => {
+    if (!latestRow) return []
+
+    return [
+      {
+        key: 't1',
+        label: 'Tier 1',
+        current: Number(latestRow.t1) || 0,
+        prediction: mlAdvisor.tierPredictions?.t1 ?? null,
+      },
+      {
+        key: 't2',
+        label: 'Tier 2',
+        current: Number(latestRow.t2) || 0,
+        prediction: mlAdvisor.tierPredictions?.t2 ?? null,
+      },
+      {
+        key: 't3',
+        label: 'Tier 3',
+        current: Number(latestRow.t3) || 0,
+        prediction: mlAdvisor.tierPredictions?.t3 ?? null,
+      },
+    ].map((tier) => ({
+      ...tier,
+      predictionLabel: normalizePrediction(tier.prediction),
+      recommendation: tierRecommendation(tier.prediction),
+      reason: tierReason(tier.label, tier.current, tier.prediction, stats.trendLabel),
+    }))
+  }, [latestRow, mlAdvisor.tierPredictions, stats.trendLabel])
+
+  const forecastTimeline = useMemo(() => {
+    const trainedHorizonKey = horizonKeyFromLabel(mlAdvisor.snapshot?.horizonLabel)
+    const tiers = mlAdvisor.tierPredictions
+    const makeSummary = () => {
+      if (!tiers) return 'Train this horizon on the ML page'
+      return `T1 ${normalizePrediction(tiers.t1)} · T2 ${normalizePrediction(tiers.t2)} · T3 ${normalizePrediction(tiers.t3)}`
+    }
+
+    return [
+      {
+        key: 'current',
+        label: 'Current condition',
+        active: true,
+        summary: latestRow ? `T1 ${Math.round(latestRow.t1)}% · T2 ${Math.round(latestRow.t2)}% · T3 ${Math.round(latestRow.t3)}%` : 'No live row yet',
+      },
+      {
+        key: '5m',
+        label: 'After 5 minutes',
+        active: trainedHorizonKey === '5m',
+        summary: trainedHorizonKey === '5m' ? makeSummary() : 'Train 5-minute forecast',
+      },
+      {
+        key: '10m',
+        label: 'After 10 minutes',
+        active: trainedHorizonKey === '10m',
+        summary: trainedHorizonKey === '10m' ? makeSummary() : 'Train 10-minute forecast',
+      },
+      {
+        key: '20m',
+        label: 'After 20 minutes',
+        active: trainedHorizonKey === '20m',
+        summary: trainedHorizonKey === '20m' ? makeSummary() : 'Train 20-minute forecast',
+      },
+    ]
+  }, [latestRow, mlAdvisor.snapshot?.horizonLabel, mlAdvisor.tierPredictions])
 
   const chartData = stats.rows.map((row) => ({
     time: row.time instanceof Date ? row.time.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '--:--:--',
@@ -118,19 +263,64 @@ export default function DashboardInsights({ history, data }) {
       <div style={styles.advisorCard}>
         <div style={styles.advisorHead}>
           <div>
-            <div style={styles.advisorLabel}>ML advisory</div>
-            <div style={styles.advisorValue}>{mlAdvisor.advisory.status}</div>
+            <div style={styles.advisorLabel}>Time-based soil prediction</div>
+            <div style={styles.advisorValue}>{mlAdvisor.tierSummary?.title || mlAdvisor.advisory.status}</div>
           </div>
           <div style={styles.advisorTone(mlAdvisor.advisory.tone)}>
             {mlAdvisor.snapshot?.label ?? 'No trained model'}
           </div>
         </div>
-        <div style={styles.advisorText}>{mlAdvisor.advisory.detail}</div>
+        <div style={styles.advisorText}>{mlAdvisor.tierSummary?.detail || mlAdvisor.advisory.detail}</div>
+        {mlAdvisor.tierPredictions && (
+          <div style={styles.tierForecastRow}>
+            <span style={styles.tierForecastLabel}>Per-tier forecast</span>
+            <span style={{ ...styles.tierForecastChip, ...tierPredictionTone(mlAdvisor.tierPredictions.t1) }}>T1: {mlAdvisor.tierPredictions.t1 ?? 'n/a'}</span>
+            <span style={{ ...styles.tierForecastChip, ...tierPredictionTone(mlAdvisor.tierPredictions.t2) }}>T2: {mlAdvisor.tierPredictions.t2 ?? 'n/a'}</span>
+            <span style={{ ...styles.tierForecastChip, ...tierPredictionTone(mlAdvisor.tierPredictions.t3) }}>T3: {mlAdvisor.tierPredictions.t3 ?? 'n/a'}</span>
+          </div>
+        )}
         <div style={styles.advisorMetaRow}>
-          <span style={styles.advisorMeta}>Prediction: {mlAdvisor.prediction ?? 'n/a'}</span>
+          <span style={styles.advisorMeta}>Predicted class: {mlAdvisor.prediction ?? 'n/a'}</span>
           <span style={styles.advisorMeta}>{latestRow ? `Latest row: T1 ${Math.round(latestRow.t1)}%, T2 ${Math.round(latestRow.t2)}%, T3 ${Math.round(latestRow.t3)}%` : 'No sensor row yet'}</span>
         </div>
       </div>
+
+      {tierForecastCards.length > 0 && (
+        <div style={styles.predictionWorkspace}>
+          <div style={styles.tierCardGrid}>
+            {tierForecastCards.map((tier) => (
+              <div key={tier.key} style={styles.tierCard}>
+                <div style={styles.tierCardTop}>
+                  <div>
+                    <div style={styles.tierCardLabel}>{tier.label}</div>
+                    <div style={styles.tierCardCurrent}>Current: {Math.round(tier.current)}%</div>
+                  </div>
+                  <span style={{ ...styles.tierStateBadge, ...tierPredictionTone(tier.prediction) }}>
+                    Likely {tier.predictionLabel}
+                  </span>
+                </div>
+                <div style={styles.tierRecommendation}>{tier.recommendation}</div>
+                <div style={styles.tierReason}>{tier.reason}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={styles.timelineCard}>
+            <div style={styles.chartHead}>
+              <h4 style={styles.chartTitle}>Forecast timeline</h4>
+              <span style={styles.chartMeta}>Current and forecast checkpoints</span>
+            </div>
+            <div style={styles.timelineGrid}>
+              {forecastTimeline.map((item) => (
+                <div key={item.key} style={item.active ? styles.timelineItemActive : styles.timelineItem}>
+                  <div style={styles.timelineLabel}>{item.label}</div>
+                  <div style={styles.timelineSummary}>{item.summary}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={styles.metrics}>
         <Metric label="Avg moisture" value={fmtPct(stats.avgMoisture)} note="Last 30 readings" tone="green" />
@@ -216,6 +406,9 @@ const styles = {
   advisorLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800, color: 'var(--slate-500)' },
   advisorValue: { fontSize: 24, fontWeight: 900, marginTop: 4, color: 'var(--slate-900)' },
   advisorText: { marginTop: 8, fontSize: 13, color: 'var(--slate-700)', lineHeight: 1.5 },
+  tierForecastRow: { marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
+  tierForecastLabel: { fontSize: 12, fontWeight: 800, color: 'var(--slate-600)' },
+  tierForecastChip: { fontSize: 12, color: 'var(--slate-700)', background: 'rgba(255,255,255,0.78)', border: '1px solid rgba(15,23,42,0.06)', borderRadius: 999, padding: '6px 10px', fontWeight: 700 },
   advisorMetaRow: { marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 10 },
   advisorMeta: { fontSize: 12, color: 'var(--slate-600)', background: 'rgba(255,255,255,0.72)', border: '1px solid rgba(15,23,42,0.05)', borderRadius: 999, padding: '6px 10px' },
   advisorTone: (tone) => ({
@@ -240,6 +433,21 @@ const styles = {
     fontSize: 12,
     fontWeight: 800,
   }),
+  predictionWorkspace: { display: 'grid', gap: 14, marginBottom: 14 },
+  tierCardGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 },
+  tierCard: { borderRadius: 18, border: '1px solid rgba(15,23,42,0.05)', padding: '1rem', background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.96))' },
+  tierCardTop: { display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start', marginBottom: 12 },
+  tierCardLabel: { fontSize: 13, fontWeight: 900, color: 'var(--slate-900)', textTransform: 'uppercase', letterSpacing: '0.06em' },
+  tierCardCurrent: { marginTop: 4, fontSize: 13, color: 'var(--slate-600)' },
+  tierStateBadge: { display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '8px 12px', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' },
+  tierRecommendation: { fontSize: 18, fontWeight: 900, color: 'var(--slate-900)', marginBottom: 8 },
+  tierReason: { fontSize: 13, color: 'var(--slate-600)', lineHeight: 1.6 },
+  timelineCard: { borderRadius: 18, border: '1px solid rgba(15,23,42,0.05)', padding: '1rem', background: 'white' },
+  timelineGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 },
+  timelineItem: { borderRadius: 14, padding: '0.9rem', background: 'rgba(248,250,252,0.95)', border: '1px solid rgba(15,23,42,0.05)' },
+  timelineItemActive: { borderRadius: 14, padding: '0.9rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.16)' },
+  timelineLabel: { fontSize: 12, fontWeight: 900, color: 'var(--slate-700)', marginBottom: 6 },
+  timelineSummary: { fontSize: 13, color: 'var(--slate-600)', lineHeight: 1.5 },
   empty: { minHeight: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--slate-500)', fontSize: 13, background: 'rgba(15,23,42,0.02)', borderRadius: 14 },
   metrics: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 14 },
   metric: { borderRadius: 16, padding: '1rem', border: '1px solid rgba(15,23,42,0.05)', background: 'rgba(248,250,252,0.95)' },
