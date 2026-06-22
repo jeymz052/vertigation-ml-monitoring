@@ -32,10 +32,10 @@ export default function DashboardPage({ data, history, status, sendControl }) {
         {data && (
           <>
             <TierCards data={data} />
-            <EnvMetrics data={data} />
+            <EnvMetrics data={data} sendControl={sendControl} />
+            <DashboardInsights data={data} history={history} />
             <DashboardControls data={data} sendControl={sendControl} />
             <SystemStatus data={data} />
-            <DashboardInsights data={data} history={history} />
             <TierMoisture data={data} history={history} />
           </>
         )}

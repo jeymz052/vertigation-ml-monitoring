@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import SystemStatus from '../components/SystemStatus'
+import { FORECAST_HORIZON_OPTIONS, loadPreferredHorizon, savePreferredHorizon } from '../lib/forecastSettings'
 
 const DATSTREAMS = [
   { pin: 'V0', label: 'Soil Moisture Tier 1', type: 'Double', use: 'Live sensor display and ML feature' },
@@ -11,6 +13,10 @@ const DATSTREAMS = [
   { pin: 'V7', label: 'Manual Pump Control', type: 'Integer', use: 'Dashboard override switch' },
   { pin: 'V8', label: 'AUTO / MANUAL Mode', type: 'Integer', use: 'System mode selector' },
   { pin: 'V9', label: 'Pump Status', type: 'Integer', use: 'Live actuator feedback' },
+  { pin: 'V10', label: 'Battery Percentage', type: 'Integer', use: '12V battery level' },
+  { pin: 'V11', label: 'Battery Voltage', type: 'Double', use: 'Battery voltage reading' },
+  { pin: 'V12', label: 'Battery Current', type: 'Double', use: 'Battery current reading' },
+  { pin: 'V13', label: 'Battery Switch', type: 'Integer', use: 'Battery charging toggle' },
 ]
 
 const FLOW = [
@@ -23,11 +29,24 @@ const FLOW = [
 const QUICK_FACTS = [
   { label: 'Dry threshold', value: '30%', tone: 'green' },
   { label: 'Wet threshold', value: '60%', tone: 'blue' },
-  { label: 'ML input', value: '7 features', tone: 'amber' },
+  { label: 'ML input', value: '12 features', tone: 'amber' },
   { label: 'Control mode', value: 'AUTO / MANUAL', tone: 'slate' },
 ]
 
-export default function SettingsPage({ data }) {
+const HORIZON_LABELS = {
+  '5m': '5 minutes',
+  '10m': '10 minutes',
+  '20m': '20 minutes',
+  '30m': '30 minutes',
+}
+
+export default function SettingsPage({ data, role = 'admin' }) {
+  const [selectedHorizon, setSelectedHorizon] = useState(() => loadPreferredHorizon('10m'))
+
+  useEffect(() => {
+    savePreferredHorizon(selectedHorizon)
+  }, [selectedHorizon])
+
   return (
     <main className="page-main settings-main" style={styles.main}>
       <section className="settings-hero" style={styles.hero}>
@@ -35,7 +54,7 @@ export default function SettingsPage({ data }) {
           <p style={styles.kicker}>Setup</p>
           <h1 className="page-title" style={styles.title}>System Configuration</h1>
           <p className="page-subtitle" style={styles.subtitle}>
-            Reference page for the ESP32 logic, Blynk datastreams, and control behavior used by the thesis prototype.
+            Reference page for the ESP32 logic, Blynk datastreams, forecast horizon, and control behavior used by the thesis prototype.
           </p>
         </div>
 
@@ -46,6 +65,50 @@ export default function SettingsPage({ data }) {
             AUTO handles threshold watering. MANUAL is for testing and maintenance. Tank empty always locks the actuators off.
           </div>
         </div>
+      </section>
+
+      <section className="settings-grid" style={styles.contentGrid}>
+        <article className="settings-card" style={styles.card}>
+          <div style={styles.cardHeader}>
+            <h2 style={styles.cardTitle}>Battery and charging</h2>
+            <span style={styles.cardPill}>Power</span>
+          </div>
+          <Rule label="Battery percentage" value={Number.isFinite(Number(data?.batteryPercent)) ? `${Math.round(Number(data?.batteryPercent))}%` : 'N/A'} />
+          <Rule label="Battery voltage" value={Number.isFinite(Number(data?.batteryVoltage)) ? `${Number.parseFloat(data?.batteryVoltage).toFixed(2)} V` : 'N/A'} />
+          <Rule label="Battery current" value={Number.isFinite(Number(data?.batteryCurrent)) ? `${Math.round(Number(data?.batteryCurrent))} mA` : 'N/A'} />
+          <p style={styles.text}>
+            Battery charging control is enabled through the dashboard battery card. This setup also includes `V13` for the switch.
+          </p>
+        </article>
+
+        <article className="settings-card" style={styles.card}>
+          <div style={styles.cardHeader}>
+            <h2 style={styles.cardTitle}>Forecast horizon</h2>
+            <span style={styles.cardPill}>{role === 'farmer' ? 'Farmer setting' : 'Shared setting'}</span>
+          </div>
+          <p style={styles.text}>
+            Choose the forecast window used by the dashboard forecast cards. The farmer can use this setting without opening the Machine Learning page.
+          </p>
+          <div style={styles.horizonGrid}>
+            {FORECAST_HORIZON_OPTIONS.map((option) => {
+              const active = selectedHorizon === option.key
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setSelectedHorizon(option.key)}
+                  style={{ ...styles.horizonButton, ...(active ? styles.horizonButtonActive : null) }}
+                >
+                  <div style={styles.horizonLabel}>{option.label}</div>
+                  <div style={styles.horizonMeta}>{active ? 'Selected' : 'Use in ML training'}</div>
+                </button>
+              )
+            })}
+          </div>
+          <p style={{ ...styles.text, marginTop: 12 }}>
+            Current forecast horizon: <strong>{HORIZON_LABELS[selectedHorizon] || '10 minutes'}</strong>
+          </p>
+        </article>
       </section>
 
       <section className="settings-quick-grid settings-grid" style={styles.quickGrid}>
@@ -105,7 +168,10 @@ export default function SettingsPage({ data }) {
             For thesis defense, keep `V8` as the mode switch and `V7` as the manual pump override. `V9` should always reflect the actual pump state.
           </p>
           <p style={styles.text}>
-            The ML page can train from the same history stream without changing the hardware flow.
+            The ML page can still train from the same history stream without changing the hardware flow.
+          </p>
+          <p style={styles.text}>
+            The farmer account is intentionally limited to monitoring and setup so the control side stays simpler during demonstrations.
           </p>
         </article>
 
@@ -245,4 +311,20 @@ const styles = {
   streamUse: { fontSize: 12, color: 'var(--slate-500)', marginTop: 2, lineHeight: 1.45 },
   streamType: { fontSize: 12, fontWeight: 800, color: 'var(--slate-700)', textAlign: 'right' },
   text: { fontSize: 13, color: 'var(--slate-600)', lineHeight: 1.7, marginBottom: 12 },
+  horizonGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginTop: 10 },
+  horizonButton: {
+    border: '1px solid rgba(15,23,42,0.08)',
+    background: 'white',
+    borderRadius: 16,
+    padding: '12px 14px',
+    textAlign: 'left',
+    cursor: 'pointer',
+    boxShadow: 'var(--shadow-sm)',
+  },
+  horizonButtonActive: {
+    borderColor: 'rgba(22,163,74,0.24)',
+    background: 'rgba(22,163,74,0.08)',
+  },
+  horizonLabel: { fontSize: 14, fontWeight: 900, color: 'var(--slate-900)' },
+  horizonMeta: { fontSize: 11, color: 'var(--slate-500)', marginTop: 4 },
 }

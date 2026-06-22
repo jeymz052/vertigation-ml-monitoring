@@ -12,8 +12,8 @@ export default function LoginPage() {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    const ok = login(user, pass)
-    if (!ok) {
+    const result = login(user, pass)
+    if (!result.ok) {
       setShaking(true)
       setTimeout(() => setShaking(false), 500)
     }
@@ -27,6 +27,9 @@ export default function LoginPage() {
         <form className="login-form" onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.logoWrap}>
             <img src={logo} alt="Vertigation logo" style={styles.logoImage} />
+          </div>
+          <div style={styles.roleNote}>
+            Use your assigned username and password. Access is automatically matched to your account.
           </div>
           <div style={styles.field}>
             <label style={styles.label}>Username</label>
@@ -162,6 +165,13 @@ const styles = {
     display: 'flex', justifyContent: 'center', marginBottom: '1rem',
   },
   logoImage: { height: 84, width: 'auto', objectFit: 'contain', display: 'block' },
+  roleNote: {
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: 'rgba(255,255,255,0.88)',
+    marginBottom: 2,
+    textAlign: 'center',
+  },
   title: {
     textAlign: 'center',
     fontSize: 22,

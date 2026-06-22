@@ -7,6 +7,7 @@ import {
   predictLogisticRegression,
 } from '../lib/mlModels'
 import { clearStoredModelData, loadTrainingRuns, loadTrainedModelSnapshot, saveTrainingRun, saveTrainedModelSnapshot } from '../lib/mlAdvisor'
+import { loadPreferredHorizon, savePreferredHorizon } from '../lib/forecastSettings'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, CartesianGrid } from 'recharts'
 
 const FEATURE_NAMES = ['t1', 't2', 't3', 'avg moisture', 'imbalance', 'temp', 'humidity', 'lux', 'tank', 'pump', 'hour sin', 'hour cos']
@@ -239,7 +240,7 @@ function evaluateModelByKey(modelKey, X, y) {
 export default function MachineLearningPage({ history = [], forecastHistory = [], clearHistory }) {
   const savedSnapshot = useMemo(() => loadTrainedModelSnapshot(), [])
   const [selectedModel, setSelectedModel] = useState(savedSnapshot?.modelKey || 'random_forest')
-  const [selectedHorizon, setSelectedHorizon] = useState(savedSnapshot?.horizonKey || '10m')
+  const [selectedHorizon, setSelectedHorizon] = useState(() => loadPreferredHorizon(savedSnapshot?.horizonKey || '10m'))
   const [model, setModel] = useState(savedSnapshot?.model ?? null)
   const [metrics, setMetrics] = useState(savedSnapshot ? {
     accuracy: savedSnapshot.accuracy ?? null,
@@ -323,6 +324,10 @@ export default function MachineLearningPage({ history = [], forecastHistory = []
 
   const selectedForecastOption = forecastOptions.find((option) => option.key === selectedHorizon) ?? forecastOptions[0]
   const firstAvailableForecast = forecastOptions.find((option) => option.available) ?? null
+
+  useEffect(() => {
+    savePreferredHorizon(selectedHorizon)
+  }, [selectedHorizon])
 
   useEffect(() => {
     if (selectedForecastOption?.available) return

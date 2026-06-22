@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import logo from '../images/vertigationlogo-removebg-preview.png'
 
-export default function Navbar({ status, lastUpdate, activePage = 'dashboard', onNavigate }) {
+export default function Navbar({ status, lastUpdate, activePage = 'dashboard', onNavigate, role = 'admin' }) {
   const { logout } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
@@ -15,10 +15,10 @@ export default function Navbar({ status, lastUpdate, activePage = 'dashboard', o
 
   const navItems = useMemo(() => ([
     { key: 'dashboard', label: 'Dashboard', icon: 'fa-solid fa-house' },
-    { key: 'machineLearning', label: 'Machine Learning', icon: 'fa-solid fa-brain' },
-    { key: 'reports', label: 'Results', icon: 'fa-solid fa-chart-line' },
+    { key: 'machineLearning', label: 'Machine Learning', icon: 'fa-solid fa-brain', roles: ['admin'] },
+    { key: 'reports', label: 'Results', icon: 'fa-solid fa-chart-line', roles: ['admin'] },
     { key: 'settings', label: 'Setup', icon: 'fa-solid fa-gear' },
-  ]), [])
+  ].filter((item) => !item.roles || item.roles.includes(role))), [role])
 
   useEffect(() => {
     const onDocClick = (event) => {
@@ -68,6 +68,7 @@ export default function Navbar({ status, lastUpdate, activePage = 'dashboard', o
       </div>
 
       <div className="app-navbar__right" style={styles.right}>
+        <div style={styles.roleBadge}>{role === 'farmer' ? 'Farmer view' : 'Admin view'}</div>
         <div style={styles.statusBadge}>
           <span style={{ ...styles.statusDot, background: statusConfig.color,
             animation: status === 'live' ? 'pulse-dot 1.5s ease infinite' : undefined }} />
@@ -155,6 +156,17 @@ const styles = {
   },
   linkIcon: { fontSize: 12 },
   right: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  roleBadge: {
+    fontSize: 11,
+    fontWeight: 800,
+    padding: '7px 10px',
+    borderRadius: 999,
+    background: 'rgba(22,163,74,0.08)',
+    border: '1px solid rgba(22,163,74,0.12)',
+    color: 'var(--green-700)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+  },
   statusBadge: {
     display: 'flex', alignItems: 'center', gap: 6,
     background: 'rgba(15,23,42,0.03)',

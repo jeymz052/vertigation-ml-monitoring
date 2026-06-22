@@ -17,7 +17,22 @@ function StatusRow({ iconClass, label, active, activeText, inactiveText, activeC
   )
 }
 
-export default function SystemStatus({ data }) {
+function ValueRow({ iconClass, label, value, note, activeColor = '#64748b' }) {
+  return (
+    <div style={styles.valueRow}>
+      <div style={styles.rowLeft}>
+        <span style={styles.icon}><i className={iconClass} aria-hidden="true" /></span>
+        <span style={styles.rowLabel}>{label}</span>
+      </div>
+      <div style={styles.valueWrap}>
+        <strong style={{ color: activeColor }}>{value}</strong>
+        {note && <span style={styles.valueNote}>{note}</span>}
+      </div>
+    </div>
+  )
+}
+
+export default function SystemStatus({ data = {} }) {
   return (
     <div className="fade-up fade-up-4" style={{ ...styles.card }}>
       <div style={styles.header}>
@@ -41,6 +56,31 @@ export default function SystemStatus({ data }) {
           <StatusRow iconClass="fa-solid fa-sun" label="BH1750 (Light)"   active={data.lux > 0}              activeText="OK" inactiveText="No data" activeColor="var(--green-400)" />
           <StatusRow iconClass="fa-solid fa-tint" label="Float Switch"      active={data.tank === 1}            activeText="Water OK" inactiveText="Tank empty" activeColor="var(--green-400)" />
           <StatusRow iconClass="fa-solid fa-cloud" label="Blynk Cloud"       active={true}                       activeText="Connected" inactiveText="Offline" activeColor="#2ecc71" />
+        </div>
+
+        <div style={styles.col}>
+          <p style={styles.colTitle}>Power</p>
+          <ValueRow
+            iconClass="fa-solid fa-battery-three-quarters"
+            label="Battery"
+            value={Number.isFinite(Number(data.batteryPercent)) ? `${Math.max(0, Math.round(Number(data.batteryPercent)))}%` : 'N/A'}
+            note="12V battery level"
+            activeColor={Number(data.batteryPercent) <= 20 ? '#dc2626' : 'var(--green-500)'}
+          />
+          <ValueRow
+            iconClass="fa-solid fa-bolt"
+            label="Voltage"
+            value={Number.isFinite(Number(data.batteryVoltage)) ? `${Number.parseFloat(data.batteryVoltage).toFixed(2)} V` : 'N/A'}
+            note="Battery voltage"
+            activeColor="var(--amber-500)"
+          />
+          <ValueRow
+            iconClass="fa-solid fa-wave-square"
+            label="Current"
+            value={Number.isFinite(Number(data.batteryCurrent)) ? `${Math.round(Number(data.batteryCurrent))} mA` : 'N/A'}
+            note="Monitoring only"
+            activeColor="var(--slate-600)"
+          />
         </div>
       </div>
     </div>
@@ -69,4 +109,7 @@ const styles = {
   icon: { fontSize: 16 },
   rowLabel: { fontSize: 13, color: 'var(--slate-700)' },
   pill: { fontSize: 11, fontWeight: 600, padding: '6px 12px', borderRadius: 99 },
+  valueRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  valueWrap: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, minWidth: 110, textAlign: 'right' },
+  valueNote: { fontSize: 11, color: 'var(--slate-500)' },
 }

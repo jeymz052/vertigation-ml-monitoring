@@ -29,10 +29,27 @@ const cards = (data) => [
     sub: data.tank === 1 ? 'Sufficient' : 'Refill needed',
     color: data.tank === 1 ? 'var(--green-600)' : 'var(--red-400)',
   },
+  {
+    iconClass: 'fa-solid fa-battery-three-quarters',
+    label: 'Battery',
+    value: Number.isFinite(Number(data.batteryPercent)) ? `${Math.max(0, Math.round(Number(data.batteryPercent)))}%` : 'N/A',
+    sub: Number.isFinite(Number(data.batteryVoltage)) ? `${Number.parseFloat(data.batteryVoltage).toFixed(2)} V` : 'No voltage',
+    color: Number(data.batteryPercent) <= 20 ? 'var(--red-400)' : 'var(--green-600)',
+  },
 ]
 
-export default function EnvMetrics({ data }) {
+export default function EnvMetrics({ data = {}, sendControl }) {
   const [activeIndex, setActiveIndex] = useState(0)
+
+  const handleChargingToggle = async () => {
+    if (!sendControl) return
+    const nextValue = Number(data.charging) === 1 ? 0 : 1
+    try {
+      await sendControl('V13', nextValue)
+    } catch {
+      alert('Failed to update battery charging. Please check the V13 datastream and relay wiring.')
+    }
+  }
 
   return (
     <div className="env-metrics-grid" style={styles.grid}>
@@ -62,7 +79,25 @@ export default function EnvMetrics({ data }) {
                 <div style={{ ...styles.sub, color: 'var(--slate-500)' }}>{c.sub}</div>
               </div>
             </div>
-            <div className="env-card__value" style={styles.value}>{c.value}</div>
+
+            {c.label === 'Battery' ? (
+              <div style={styles.batteryRight}>
+                <div className="env-card__value" style={styles.value}>{c.value}</div>
+                <button
+                  type="button"
+                  onClick={handleChargingToggle}
+                  style={{
+                    ...styles.toggleBtn,
+                    ...(Number(data.charging) === 1 ? styles.toggleBtnOn : null),
+                  }}
+                  title="Battery charging toggle"
+                >
+                  {Number(data.charging) === 1 ? 'Charging ON' : 'Charging OFF'}
+                </button>
+              </div>
+            ) : (
+              <div className="env-card__value" style={styles.value}>{c.value}</div>
+            )}
           </div>
         </div>
       ))}
@@ -97,8 +132,25 @@ const styles = {
     borderRadius: '0 0 99px 99px',
   },
   cardHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  batteryRight: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 },
   iconWrap: { width: 52, height: 52, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 },
   value: { fontSize: 30, fontWeight: 800, color: 'var(--slate-900)' },
   label: { fontSize: 12, color: 'var(--slate-600)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em' },
   sub: { fontSize: 13, fontWeight: 600 },
+  toggleBtn: {
+    border: '1px solid rgba(15,23,42,0.08)',
+    background: 'white',
+    color: 'var(--slate-800)',
+    borderRadius: 999,
+    padding: '7px 12px',
+    fontSize: 11,
+    fontWeight: 900,
+    cursor: 'pointer',
+    boxShadow: 'var(--shadow-sm)',
+  },
+  toggleBtnOn: {
+    background: 'rgba(22,163,74,0.12)',
+    borderColor: 'rgba(22,163,74,0.22)',
+    color: 'var(--green-800)',
+  },
 }

@@ -254,8 +254,12 @@ export default function DashboardInsights({ history, data }) {
     <section style={styles.card}>
       <div style={styles.header}>
         <div>
-          <h3 style={styles.title}>Operational insights</h3>
-          <p style={styles.sub}>Trend-based indicators for irrigation performance and system behavior.</p>
+          <div style={styles.kickerRow}>
+            <span style={styles.kicker}>Prediction first</span>
+            <span style={styles.kickerMuted}>Live + forecast</span>
+          </div>
+          <h3 style={styles.title}>Forecast and operational insights</h3>
+          <p style={styles.sub}>Per-tier prediction, recommendations, and a forecast timeline at the top of the dashboard.</p>
         </div>
         <div style={styles.badge}>{stats.recommendation}</div>
       </div>
@@ -265,6 +269,7 @@ export default function DashboardInsights({ history, data }) {
           <div>
             <div style={styles.advisorLabel}>Time-based soil prediction</div>
             <div style={styles.advisorValue}>{mlAdvisor.tierSummary?.title || mlAdvisor.advisory.status}</div>
+            <div style={styles.advisorSub}>{mlAdvisor.snapshot ? `Horizon: ${mlAdvisor.snapshot.horizonLabel} · Model: ${mlAdvisor.snapshot.label}` : 'Train a model to enable forecasting.'}</div>
           </div>
           <div style={styles.advisorTone(mlAdvisor.advisory.tone)}>
             {mlAdvisor.snapshot?.label ?? 'No trained model'}
@@ -390,22 +395,26 @@ function Metric({ label, value, note, tone }) {
 
 const styles = {
   card: {
-    background: 'white',
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.96))',
     border: '1px solid rgba(15,23,42,0.05)',
-    borderRadius: 18,
-    padding: '1.2rem',
+    borderRadius: 24,
+    padding: '1.4rem',
     marginBottom: 16,
-    boxShadow: 'var(--shadow-sm)',
+    boxShadow: '0 18px 34px rgba(15,23,42,0.05)',
   },
   header: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap' },
-  title: { fontSize: 16, fontWeight: 900, color: 'var(--slate-900)' },
+  title: { fontSize: 20, fontWeight: 900, color: 'var(--slate-900)', letterSpacing: '-0.03em' },
   sub: { fontSize: 13, color: 'var(--slate-600)', marginTop: 4 },
+  kickerRow: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' },
+  kicker: { display: 'inline-flex', padding: '6px 10px', borderRadius: 999, background: 'rgba(22,163,74,0.12)', color: 'var(--green-800)', fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em' },
+  kickerMuted: { display: 'inline-flex', padding: '6px 10px', borderRadius: 999, background: 'rgba(15,23,42,0.06)', color: 'var(--slate-700)', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' },
   badge: { padding: '8px 12px', borderRadius: 999, background: 'rgba(22,163,74,0.10)', color: 'var(--green-800)', fontSize: 12, fontWeight: 800 },
-  advisorCard: { marginBottom: 14, padding: '1rem', borderRadius: 16, background: 'linear-gradient(180deg, rgba(59,130,246,0.07), rgba(22,163,74,0.06))', border: '1px solid rgba(15,23,42,0.05)' },
+  advisorCard: { marginBottom: 16, padding: '1.15rem', borderRadius: 20, background: 'linear-gradient(135deg, rgba(59,130,246,0.10), rgba(34,197,94,0.10) 60%, rgba(255,255,255,0.95))', border: '1px solid rgba(15,23,42,0.05)', boxShadow: '0 14px 28px rgba(15,23,42,0.05)' },
   advisorHead: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' },
   advisorLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800, color: 'var(--slate-500)' },
-  advisorValue: { fontSize: 24, fontWeight: 900, marginTop: 4, color: 'var(--slate-900)' },
-  advisorText: { marginTop: 8, fontSize: 13, color: 'var(--slate-700)', lineHeight: 1.5 },
+  advisorValue: { fontSize: 28, fontWeight: 900, marginTop: 4, color: 'var(--slate-900)', lineHeight: 1.15, maxWidth: 880 },
+  advisorSub: { marginTop: 8, fontSize: 12.5, color: 'var(--slate-500)', fontFamily: "'DM Mono', monospace" },
+  advisorText: { marginTop: 10, fontSize: 13.5, color: 'var(--slate-700)', lineHeight: 1.6, maxWidth: 940 },
   tierForecastRow: { marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
   tierForecastLabel: { fontSize: 12, fontWeight: 800, color: 'var(--slate-600)' },
   tierForecastChip: { fontSize: 12, color: 'var(--slate-700)', background: 'rgba(255,255,255,0.78)', border: '1px solid rgba(15,23,42,0.06)', borderRadius: 999, padding: '6px 10px', fontWeight: 700 },
@@ -433,16 +442,16 @@ const styles = {
     fontSize: 12,
     fontWeight: 800,
   }),
-  predictionWorkspace: { display: 'grid', gap: 14, marginBottom: 14 },
+  predictionWorkspace: { display: 'grid', gap: 16, marginBottom: 18 },
   tierCardGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 },
-  tierCard: { borderRadius: 18, border: '1px solid rgba(15,23,42,0.05)', padding: '1rem', background: 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.96))' },
+  tierCard: { borderRadius: 20, border: '1px solid rgba(15,23,42,0.05)', padding: '1rem', background: 'linear-gradient(180deg, rgba(255,255,255,1), rgba(248,250,252,0.97))', boxShadow: '0 10px 24px rgba(15,23,42,0.04)' },
   tierCardTop: { display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start', marginBottom: 12 },
   tierCardLabel: { fontSize: 13, fontWeight: 900, color: 'var(--slate-900)', textTransform: 'uppercase', letterSpacing: '0.06em' },
   tierCardCurrent: { marginTop: 4, fontSize: 13, color: 'var(--slate-600)' },
   tierStateBadge: { display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '8px 12px', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' },
-  tierRecommendation: { fontSize: 18, fontWeight: 900, color: 'var(--slate-900)', marginBottom: 8 },
+  tierRecommendation: { fontSize: 18, fontWeight: 900, color: 'var(--slate-900)', marginBottom: 8, letterSpacing: '-0.02em' },
   tierReason: { fontSize: 13, color: 'var(--slate-600)', lineHeight: 1.6 },
-  timelineCard: { borderRadius: 18, border: '1px solid rgba(15,23,42,0.05)', padding: '1rem', background: 'white' },
+  timelineCard: { borderRadius: 20, border: '1px solid rgba(15,23,42,0.05)', padding: '1rem', background: 'white', boxShadow: '0 10px 24px rgba(15,23,42,0.04)' },
   timelineGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 },
   timelineItem: { borderRadius: 14, padding: '0.9rem', background: 'rgba(248,250,252,0.95)', border: '1px solid rgba(15,23,42,0.05)' },
   timelineItemActive: { borderRadius: 14, padding: '0.9rem', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.16)' },

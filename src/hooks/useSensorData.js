@@ -4,7 +4,7 @@ import axios from 'axios'
 const TOKEN = import.meta.env.VITE_BLYNK_TOKEN
 const BASE   = import.meta.env.VITE_BLYNK_BASE
 
-const PINS = ['V0','V1','V2','V3','V4','V5','V6','V7','V8','V9']
+const PINS = ['V0','V1','V2','V3','V4','V5','V6','V7','V8','V9','V10','V11','V12','V13']
 
 const HISTORY_LIMIT = 2000
 const HISTORY_STORAGE_KEY = 'vertigation_sensor_history_v1'
@@ -88,6 +88,10 @@ export function useSensorData() {
         pumpManual: parseInt(raw.V7 ?? 0),    // dashboard switch input
         mode:     parseInt(raw.V8   ?? 0),    // 0 = AUTO, 1 = MANUAL
         pump:     parseInt(raw.V9   ?? 0),    // 1 = running
+        batteryPercent: Number.isFinite(Number.parseFloat(raw.V10)) ? Math.round(Number.parseFloat(raw.V10)) : null,
+        batteryVoltage: Number.isFinite(Number.parseFloat(raw.V11)) ? Number.parseFloat(raw.V11).toFixed(2) : null,
+        batteryCurrent: Number.isFinite(Number.parseFloat(raw.V12)) ? Math.round(Number.parseFloat(raw.V12)) : null,
+        charging: parseInt(raw.V13 ?? 0),
       }
 
       setData(parsed)

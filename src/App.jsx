@@ -6,34 +6,49 @@ import MachineLearningPage from './pages/MachineLearningPage'
 import ReportsPage from './pages/ReportsPage'
 import SettingsPage from './pages/SettingsPage'
 import Navbar from './components/Navbar'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 function Router() {
-  const { authed } = useAuth()
+  const { authed, role } = useAuth()
   const [page, setPage] = useState('dashboard')
+
+  const allowedPages = useMemo(() => {
+    return role === 'farmer'
+      ? ['dashboard', 'settings']
+      : ['dashboard', 'machineLearning', 'reports', 'settings']
+  }, [role])
+
+  useEffect(() => {
+    if (!allowedPages.includes(page)) {
+      setPage(allowedPages[0] || 'dashboard')
+    }
+  }, [allowedPages, page])
 
   if (!authed) return <LoginPage />
 
-  return <AuthenticatedShell page={page} setPage={setPage} />
+  return <AuthenticatedShell page={page} setPage={setPage} allowedPages={allowedPages} />
 }
 
-function AuthenticatedShell({ page, setPage }) {
+function AuthenticatedShell({ page, setPage, allowedPages }) {
   const sensorState = useSensorData()
+  const { role } = useAuth()
 
   const pageContent = {
     dashboard: <DashboardPage {...sensorState} />,
     machineLearning: <MachineLearningPage {...sensorState} />,
     reports: <ReportsPage {...sensorState} />,
-    settings: <SettingsPage {...sensorState} />,
+    settings: <SettingsPage {...sensorState} role={role} />,
   }[page] ?? <DashboardPage {...sensorState} />
 
   return (
     <div style={styles.appShell}>
       <Navbar
+        role={role}
         activePage={page}
         onNavigate={setPage}
         status={sensorState.status}
         lastUpdate={sensorState.lastUpdate}
+        allowedPages={allowedPages}
       />
       {pageContent}
     </div>
